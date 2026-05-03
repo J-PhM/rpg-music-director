@@ -13,7 +13,7 @@ L'analogie qui guide la conception est celle de la **musique adaptative de jeu v
 ## Stack
 
 - [Tauri 2](https://v2.tauri.app/) — enveloppe desktop (Rust + WebView)
-- [Svelte 5](https://svelte.dev/) + TypeScript + Vite
+- [SvelteKit](https://svelte.dev/) (mode SPA via `adapter-static`) + Svelte 5 + TypeScript + Vite
 - Web Audio API pour la pile multi-couches et les boucles fines
 
 ## Plate-formes
@@ -22,7 +22,14 @@ Windows, macOS, Linux.
 
 ## Charte visuelle
 
-L'identité visuelle s'inspire du site personnel [Lemniscate](https://lemniscate.pub/) — sobriété typographique de revue savante française.
+L'identité visuelle s'inspire du site personnel [Lemniscate](https://lemniscate.pub/) — sobriété typographique de revue savante française, adaptée pour les besoins sémantiques d'une application audio (codes couleur pour la sélection, la lecture, les avertissements et les liens transverses).
+
+## Développement
+
+```bash
+npm install
+npm run tauri dev
+```
 
 ## Licence
 

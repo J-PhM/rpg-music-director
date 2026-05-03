@@ -1,0 +1,142 @@
+/* ============================================================
+   Charte Lemniscate — RPG Music Director
+   ============================================================
+   Adaptation de la charte du site lemniscate.pub pour les
+   besoins sémantiques d'une application audio.
+   Mode clair uniquement pour le jalon 1 ; mode sombre arrive
+   au jalon 14.
+   ============================================================ */
+
+:root,
+html[data-theme='light'] {
+  /* === Vélin === */
+  --paper: #faf6ee; /* fond principal */
+  --paper-soft: #f3ecdc; /* fond panneaux secondaires */
+  --paper-deep: #ebe2c9; /* fond éléments hover */
+
+  /* === Encre === */
+  --ink: #1a1815; /* texte principal */
+  --ink-soft: #4a443a; /* texte secondaire */
+
+  /* === Filets et accents typographiques === */
+  --accent: #8a7b5e; /* beige doré, méta-infos (kickers) */
+  --accent-soft: #b5a888; /* accents tertiaires */
+  --rule: #d8cfbc; /* filets / bordures */
+  --rule-soft: #e7dfc8; /* bordures discrètes */
+
+  /* === Couleurs sémantiques de l'app === */
+  --highlight: #b08c4a; /* doré antique : sélection */
+  --playing: #6a8a5a; /* vert olive : lecture en cours */
+  --warm: #a85a3a; /* terre cuite : avertissement, gomme */
+  --transverse: #7a6a9a; /* prune fanée : liens transverses */
+
+  /* === Accent Lemniscate (boutons primaires, hover des liens) === */
+  --primary: #7a1f15; /* rouge bordeaux du site lemniscate.pub */
+
+  /* === Couleurs pastel des nœuds (cf. cahier) === */
+  --node-scene: #e8d8b8;
+  --node-character: #d8c4d0;
+  --node-stinger: #e8c8a8;
+  --node-cartouche: #c8d4c2;
+
+  /* === Ombres === */
+  --shadow: 0 1px 2px rgba(40, 30, 15, 0.06);
+}
+
+/* === Polices === */
+:root {
+  --font-text: 'EB Garamond', Georgia, serif;
+  --font-display: 'Cormorant Garamond', 'EB Garamond', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+}
+
+/* === Easing universel (repris du site Lemniscate) === */
+:root {
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --t-fast: 150ms;
+  --t-mid: 250ms;
+  --t-slow: 350ms;
+}
+
+/* ============================================================
+   Reset doux
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.45;
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden; /* l'app gère son scroll en interne */
+}
+
+/* Sélection à l'accent doré, pas au bordeaux : la sélection est un
+   état sémantique distinct de l'affordance d'interaction. */
+::selection {
+  background: var(--highlight);
+  color: var(--paper);
+}
+
+/* ============================================================
+   Primitives typographiques réutilisables
+   ============================================================ */
+
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 400;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.rule {
+  width: 60px;
+  height: 1px;
+  background: var(--rule);
+  border: 0;
+}
+
+/* ============================================================
+   Scrollbars discrètes (cohérence cross-platform)
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
