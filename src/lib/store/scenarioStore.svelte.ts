@@ -17,6 +17,7 @@
 
 import { emptyScenario, nextId } from '$lib/model/defaults';
 import { EXAMPLE_SCENARIO } from '$lib/model/example';
+import { getCartoucheParent } from '$lib/model/navigation';
 import { toJson } from '$lib/model/serialize';
 import type { Node, NodeId, NodeType, Scenario } from '$lib/model/types';
 import { setLang } from '$lib/i18n/i18n.svelte';
@@ -120,6 +121,61 @@ class ScenarioStore {
 
   select(id: NodeId | null): void {
     this.selectedId = id;
+  }
+
+  // ============================================================
+  // Actions — navigation hiérarchique (cartouches)
+  // ============================================================
+
+  /**
+   * Entre dans le cartouche donné. Désélectionne pour éviter qu'une
+   * sélection du parent ne survive dans une zone où l'élément n'est
+   * plus visible (et donc plus éditable depuis l'inspecteur).
+   */
+  enterCartouche(cartoucheId: NodeId): void {
+    this.scenario.currentCartoucheId = cartoucheId;
+    this.selectedId = null;
+  }
+
+  /**
+   * Remonte d'un niveau. Si on est à la racine ou si le parent est
+   * introuvable, retourne à la racine.
+   */
+  exitCartouche(): void {
+    if (this.scenario.currentCartoucheId === null) return;
+    const parent = getCartoucheParent(this.scenario, this.scenario.currentCartoucheId);
+    this.scenario.currentCartoucheId = parent;
+    this.selectedId = null;
+  }
+
+  /**
+   * Navigation directe vers un cartouche ou la racine. Utilisé par
+   * le fil d'Ariane pour aller à un niveau précis.
+   */
+  goToCartouche(cartoucheId: NodeId | null): void {
+    this.scenario.currentCartoucheId = cartoucheId;
+    this.selectedId = null;
+  }
+
+  // ============================================================
+  // Actions — renommage (utilisé par le fil d'Ariane)
+  // ============================================================
+
+  /** Renomme un cartouche. Ignore si l'id est invalide ou si ce n'est pas un cartouche. */
+  renameCartouche(id: NodeId, newTitle: string): void {
+    const trimmed = newTitle.trim();
+    if (trimmed.length === 0) return;
+    const node = this.scenario.nodes.find((n) => n.id === id);
+    if (node && node.type === 'cartouche') {
+      node.title = trimmed;
+    }
+  }
+
+  /** Renomme la campagne (titre de la racine du fil d'Ariane). */
+  renameCampaign(newTitle: string): void {
+    const trimmed = newTitle.trim();
+    if (trimmed.length === 0) return;
+    this.scenario.campaignTitle = trimmed;
   }
 
   // ============================================================

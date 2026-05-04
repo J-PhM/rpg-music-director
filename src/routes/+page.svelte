@@ -10,6 +10,7 @@
    * jalons 5 et 9 respectivement.
    */
 
+  import Breadcrumb from '$lib/components/Breadcrumb.svelte';
   import Canvas from '$lib/components/Canvas.svelte';
   import Inspector from '$lib/components/Inspector.svelte';
   import Settings from '$lib/components/Settings.svelte';
@@ -39,6 +40,7 @@
 
 <div class="app">
   <Toolbar onToast={showToast} onOpenSettings={openSettings} />
+  <Breadcrumb />
 
   <div class="main">
     <Canvas onToast={showToast} />
@@ -56,7 +58,7 @@
   .app {
     height: 100vh;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     overflow: hidden;
   }
 

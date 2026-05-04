@@ -26,6 +26,7 @@
    */
 
   import { isCartouche, type Node, type NodeId } from '$lib/model/types';
+  import { getNodeFullPath } from '$lib/model/navigation';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { isTauriContext } from '$lib/io/scenarioFile';
@@ -132,14 +133,11 @@
   // ============================================================
 
   /**
-   * Index des connexions à afficher comme courbes (extrémités toutes
-   * deux dans le cartouche courant). Utilise `with` pour garder l'index
-   * réel dans `store.scenario.connections` — utile pour la suppression.
-   *
-   * Au jalon 5 on rendra aussi les connexions transverses sous forme de
-   * petits marqueurs prune.
+   * Connexions visibles SOUS FORME DE COURBES : leurs deux extrémités
+   * sont dans le cartouche courant. L'index original est préservé pour
+   * la suppression au clic.
    */
-  const visibleConnections = $derived.by(() => {
+  const visibleCurves = $derived.by(() => {
     const result: { index: number; from: Node; to: Node }[] = [];
     const visibleIds = new Set(store.visibleNodes.map((n) => n.id));
     const allNodes = store.scenario.nodes;
@@ -152,6 +150,101 @@
       result.push({ index: i, from, to });
     }
     return result;
+  });
+
+  /**
+   * Connexions partiellement visibles : exactement UNE extrémité dans
+   * le cartouche courant. Rendues comme petits marqueurs prune au bord
+   * du nœud visible, avec une étiquette indiquant l'autre extrémité.
+   */
+  interface TransverseMarker {
+    /** Nœud visible auquel le marqueur est attaché. */
+    visibleNode: Node;
+    /** Côté du nœud où placer le marqueur ('right' = sortie, 'left' = entrée). */
+    side: 'right' | 'left';
+    /** Texte affiché à côté du marqueur. */
+    label: string;
+  }
+  const visibleTransverseMarkers = $derived.by((): TransverseMarker[] => {
+    const result: TransverseMarker[] = [];
+    const visibleIds = new Set(store.visibleNodes.map((n) => n.id));
+    const allNodes = store.scenario.nodes;
+    for (const c of store.scenario.connections) {
+      const fromVis = visibleIds.has(c.from);
+      const toVis = visibleIds.has(c.to);
+      if (fromVis === toVis) continue; // soit les deux (= curve), soit aucun (= invisible)
+      if (fromVis) {
+        const from = allNodes.find((n) => n.id === c.from);
+        const to = allNodes.find((n) => n.id === c.to);
+        if (!from || !to) continue;
+        result.push({
+          visibleNode: from,
+          side: 'right',
+          label: '→ ' + getNodeFullPath(store.scenario, to.id),
+        });
+      } else {
+        const from = allNodes.find((n) => n.id === c.from);
+        const to = allNodes.find((n) => n.id === c.to);
+        if (!from || !to) continue;
+        result.push({
+          visibleNode: to,
+          side: 'left',
+          label: '← ' + getNodeFullPath(store.scenario, from.id),
+        });
+      }
+    }
+    return result;
+  });
+
+  /**
+   * Pour chaque cartouche visible, calcule les rectangles miniatures
+   * de ses enfants pour la mini-vue satellite. Renvoie un objet par
+   * cartouche, indexé par id.
+   */
+  interface MiniPreview {
+    rects: { x: number; y: number; w: number; h: number; type: Node['type'] }[];
+  }
+  const miniPreviews = $derived.by((): Record<NodeId, MiniPreview> => {
+    const out: Record<NodeId, MiniPreview> = {};
+    const PADDING_X = 20;
+    const PADDING_Y_TOP = 90;
+    const PADDING_Y_BOTTOM = 10;
+    for (const node of store.visibleNodes) {
+      if (!isCartouche(node)) continue;
+      const children = store.scenario.nodes.filter((n) => n.parentId === node.id);
+      if (children.length === 0) continue;
+
+      const xs = children.map((c) => c.x);
+      const ys = children.map((c) => c.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const c of children) {
+        const d = dim(c);
+        if (c.x + d.w > maxX) maxX = c.x + d.w;
+        if (c.y + d.h > maxY) maxY = c.y + d.h;
+      }
+      const bbW = Math.max(maxX - minX, 1);
+      const bbH = Math.max(maxY - minY, 1);
+      const previewW = CARTOUCHE_W - 2 * PADDING_X;
+      const previewH = CARTOUCHE_H - PADDING_Y_TOP - PADDING_Y_BOTTOM;
+      const ps = Math.min(previewW / bbW, previewH / bbH);
+
+      out[node.id] = {
+        rects: children.map((c) => {
+          const d = dim(c);
+          return {
+            x: (c.x - minX) * ps,
+            y: (c.y - minY) * ps,
+            w: d.w * ps,
+            h: d.h * ps,
+            type: c.type,
+          };
+        }),
+      };
+    }
+    return out;
   });
 
   /**
@@ -286,6 +379,21 @@
     onToast(t('toast.connectionDeleted'));
   }
 
+  /**
+   * Double-clic sur un nœud cartouche → entrer dedans. On utilise
+   * `dblclick` natif (qui suit les deux pointerup) plutôt qu'un
+   * détecteur custom basé sur le temps : c'est plus fiable et
+   * cohérent avec le reste du système.
+   */
+  function handleSvgDblClick(e: MouseEvent): void {
+    const rect = svgEl.getBoundingClientRect();
+    const wp = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const hit = findNodeAt(wp.x, wp.y);
+    if (hit && hit.type === 'cartouche') {
+      store.enterCartouche(hit.id);
+    }
+  }
+
   // ============================================================
   // Image de fond (jalon 4.5)
   // ============================================================
@@ -333,10 +441,11 @@
     onpointermove={handleSvgPointerMove}
     onpointerup={handleSvgPointerUp}
     onpointercancel={handleSvgPointerUp}
+    ondblclick={handleSvgDblClick}
   >
     <!-- Couche 1 : connexions (sous les nœuds) -->
     <g class="connections-layer">
-      {#each visibleConnections as conn (conn.index)}
+      {#each visibleCurves as conn (conn.index)}
         {@const d = bezierPath(conn.from, conn.to)}
         <!-- Path invisible épais : zone de clic confortable pour la suppression -->
         <path
@@ -365,6 +474,22 @@
           fill="none"
         ></path>
       {/if}
+
+      <!-- Marqueurs des connexions transverses (un seul bout visible). -->
+      {#each visibleTransverseMarkers as m, i (i)}
+        {@const nd = dim(m.visibleNode)}
+        {@const cx = m.side === 'right' ? m.visibleNode.x + nd.w + 10 : m.visibleNode.x - 10}
+        {@const cy = m.visibleNode.y + nd.h / 2}
+        {@const labelX = m.side === 'right' ? cx + 8 : cx - 8}
+        {@const labelText = m.label.length > 28 ? m.label.slice(0, 27) + '…' : m.label}
+        <circle class="ext-marker" cx={cx} cy={cy} r="4" />
+        <text
+          class="ext-text"
+          x={labelX}
+          y={cy + 3}
+          text-anchor={m.side === 'right' ? 'start' : 'end'}
+        >{labelText}</text>
+      {/each}
     </g>
 
     <!-- Couche 2 : nœuds -->
@@ -388,6 +513,23 @@
               {node.title.length > 22 ? node.title.slice(0, 21) + '…' : node.title}
             </text>
             <text class="cartouche-count" x={d.w / 2} y="62" text-anchor="middle">{subtitle}</text>
+
+            <!-- Mini-vue satellite : aperçu des enfants à l'échelle réduite. -->
+            {@const preview = miniPreviews[node.id]}
+            {#if preview}
+              <g class="mini-preview" transform="translate(20, 90)">
+                {#each preview.rects as r}
+                  <rect
+                    x={r.x}
+                    y={r.y}
+                    width={r.w}
+                    height={r.h}
+                    rx="2"
+                    class="mini-rect mini-{r.type}"
+                  />
+                {/each}
+              </g>
+            {/if}
           {:else}
             <text class="node-icon" x="22" y="28">{getIcon(node)}</text>
             <text class="node-title" x={d.w / 2 + 10} y="28">
@@ -556,6 +698,44 @@
     font-style: italic;
     fill: var(--ink-soft);
     pointer-events: none;
+  }
+
+  /* ============================================================
+     Mini-vue satellite (aperçu des enfants dans une cartouche)
+     ============================================================ */
+
+  .mini-rect {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .mini-scene {
+    fill: #735c3a;
+  }
+  .mini-character {
+    fill: #6a4868;
+  }
+  .mini-stinger {
+    fill: #8a5a3a;
+  }
+  .mini-cartouche {
+    fill: #4a6a52;
+  }
+
+  /* ============================================================
+     Marqueurs des connexions transverses
+     ============================================================ */
+
+  .ext-marker {
+    fill: var(--transverse);
+    pointer-events: none;
+  }
+  .ext-text {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    fill: var(--transverse);
+    pointer-events: none;
+    font-weight: 400;
+    letter-spacing: 0.04em;
   }
 
   /* ============================================================

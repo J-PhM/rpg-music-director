@@ -133,6 +133,14 @@
           : t('inspector.contentCount.many', { n: childCountForCartouche })}
     </div>
 
+    <button
+      class="btn primary enter-btn"
+      type="button"
+      onclick={() => store.enterCartouche(node.id)}
+    >
+      {t('inspector.actions.enterCartouche')}
+    </button>
+
     <p class="hint">{t('inspector.fileHintCartouche')}</p>
   {/if}
 </aside>
@@ -250,6 +258,13 @@
     padding: 8px 12px;
     background: var(--paper);
     border-radius: 2px;
+  }
+
+  .enter-btn {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    text-align: center;
   }
 
   .hint {
