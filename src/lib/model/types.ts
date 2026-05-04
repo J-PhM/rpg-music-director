@@ -1,0 +1,142 @@
+/**
+ * Modèle de données — RPG Music Director
+ *
+ * Types TypeScript purs, sans dépendance UI ni Tauri. Tout passe par ce
+ * module pour la définition des nœuds, connexions et scénarios.
+ *
+ * Notes de cohérence avec le cahier des charges :
+ * - L'identifiant interne d'un Tada reste 'stinger' (cohérence avec le
+ *   proto + libellé internationalisable côté UI).
+ * - Les coordonnées (x, y) sont relatives au parent (cartouche), pas
+ *   absolues. La racine = parentId === null.
+ * - Le champ `loop` est obligatoire pour les nœuds audio mais sa
+ *   valeur par défaut est imposée par le type :
+ *   true pour scène/personnage, false pour tada.
+ */
+
+// ============================================================
+// Identifiants et types discriminants
+// ============================================================
+
+export type NodeId = number;
+
+export type NodeType = 'scene' | 'character' | 'stinger' | 'cartouche';
+
+export type AudioNodeType = 'scene' | 'character' | 'stinger';
+
+// ============================================================
+// Nœuds
+// ============================================================
+
+interface BaseNode {
+  id: NodeId;
+  parentId: NodeId | null;
+  x: number;
+  y: number;
+  title: string;
+  notes: string;
+}
+
+interface AudioNodeBase extends BaseNode {
+  loop: boolean;
+  /** Chemin absolu vers un fichier local. Null tant qu'aucun fichier n'est rattaché. */
+  localFilePath: string | null;
+  /** URL YouTube alternative. Chaîne vide si pas d'URL. */
+  ytUrl: string;
+}
+
+export interface SceneNode extends AudioNodeBase {
+  type: 'scene';
+}
+
+export interface CharacterNode extends AudioNodeBase {
+  type: 'character';
+}
+
+export interface StingerNode extends AudioNodeBase {
+  type: 'stinger';
+}
+
+export type BgPlaylistMode = 'single' | 'sequential';
+
+export interface CartoucheNode extends BaseNode {
+  type: 'cartouche';
+  /** Musique de fond du cartouche : chemin absolu vers un fichier local. */
+  bgLocalFilePath: string | null;
+  /** Musique de fond du cartouche : URL YouTube alternative. */
+  bgYtUrl: string;
+  /**
+   * Playlist séquentielle pour la musique de fond. Liste de chemins absolus
+   * et/ou d'URLs YouTube. Ignorée si `bgPlaylistMode === 'single'`.
+   */
+  bgPlaylistIds: string[];
+  bgPlaylistMode: BgPlaylistMode;
+}
+
+export type Node = SceneNode | CharacterNode | StingerNode | CartoucheNode;
+export type AudioNode = SceneNode | CharacterNode | StingerNode;
+
+export function isAudioNode(node: Node): node is AudioNode {
+  return node.type !== 'cartouche';
+}
+
+export function isCartouche(node: Node): node is CartoucheNode {
+  return node.type === 'cartouche';
+}
+
+// ============================================================
+// Connexions
+// ============================================================
+
+export interface Connection {
+  from: NodeId;
+  to: NodeId;
+}
+
+// ============================================================
+// Vue (zoom/pan) par cartouche
+// ============================================================
+
+export interface View {
+  scale: number;
+  panX: number;
+  panY: number;
+}
+
+/** Clé utilisée dans `viewByCartouche` : 'root' pour la racine, sinon String(id). */
+export type ViewKey = string;
+
+export function viewKey(cartoucheId: NodeId | null): ViewKey {
+  return cartoucheId === null ? 'root' : String(cartoucheId);
+}
+
+// ============================================================
+// Scénario complet
+// ============================================================
+
+export type Language = 'fr' | 'en';
+export type Theme = 'light' | 'dark';
+
+export interface Scenario {
+  campaignTitle: string;
+  language: Language;
+  theme: Theme;
+  nodes: Node[];
+  connections: Connection[];
+  viewByCartouche: Record<ViewKey, View>;
+  currentCartoucheId: NodeId | null;
+}
+
+/** Format de fichier `.jmd` actuel. Incrémenter à chaque changement breaking. */
+export const SCENARIO_FILE_VERSION = 1 as const;
+
+export interface ScenarioFile {
+  version: typeof SCENARIO_FILE_VERSION;
+  campaignTitle: string;
+  language: Language;
+  theme: Theme;
+  nodes: Node[];
+  connections: Connection[];
+  viewByCartouche: Record<ViewKey, View>;
+  currentCartoucheId: NodeId | null;
+}
