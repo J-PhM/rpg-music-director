@@ -39,6 +39,13 @@ class ScenarioStore {
   currentPath = $state<string | null>(null);
 
   /**
+   * Mode courant de l'application. État éphémère (pas dans le scénario) :
+   * - 'edit' : préparation, édition libre, ports visibles, drag actif.
+   * - 'play' : pendant la partie, interface dépouillée, clic = trigger audio.
+   */
+  mode = $state<'edit' | 'play'>('edit');
+
+  /**
    * Sérialisation à laquelle on compare pour décider si « modifié ».
    * Mise à jour à chaque sauvegarde / chargement / nouveau scénario.
    */
@@ -141,6 +148,16 @@ class ScenarioStore {
   markSaved(path: string): void {
     this.currentPath = path;
     this.baseSerialization = toJson(this.scenario);
+  }
+
+  // ============================================================
+  // Actions — mode (préparation / jeu)
+  // ============================================================
+
+  /** Bascule entre 'edit' et 'play'. Désélectionne pour propreté. */
+  toggleMode(): void {
+    this.mode = this.mode === 'edit' ? 'play' : 'edit';
+    this.selectedId = null;
   }
 
   // ============================================================

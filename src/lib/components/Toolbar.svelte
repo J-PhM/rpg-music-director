@@ -133,6 +133,10 @@
     <span class="version kicker">v{APP_VERSION}</span>
   </h1>
 
+  <span class="mode-badge" class:play={store.mode === 'play'}>
+    {store.mode === 'play' ? t('mode.play') : t('mode.edit')}
+  </span>
+
   <div class="group">
     <button class="btn" type="button" onclick={handleNew}>{t('toolbar.new')}</button>
     <button
@@ -170,31 +174,53 @@
   <div class="separator"></div>
 
   <div class="group">
-    <button class="btn" type="button" onclick={() => handleAdd('scene')}>
-      {t('toolbar.addScene')}
-    </button>
-    <button class="btn" type="button" onclick={() => handleAdd('character')}>
-      {t('toolbar.addCharacter')}
-    </button>
-    <button class="btn" type="button" onclick={() => handleAdd('stinger')}>
-      {t('toolbar.addStinger')}
-    </button>
-    <button class="btn" type="button" onclick={() => handleAdd('cartouche')}>
-      {t('toolbar.addCartouche')}
-    </button>
+    <button
+      class="btn"
+      type="button"
+      onclick={() => handleAdd('scene')}
+      disabled={store.mode === 'play'}
+      title={store.mode === 'play' ? t('mode.tooltip.noEditInPlay') : ''}
+    >{t('toolbar.addScene')}</button>
+    <button
+      class="btn"
+      type="button"
+      onclick={() => handleAdd('character')}
+      disabled={store.mode === 'play'}
+      title={store.mode === 'play' ? t('mode.tooltip.noEditInPlay') : ''}
+    >{t('toolbar.addCharacter')}</button>
+    <button
+      class="btn"
+      type="button"
+      onclick={() => handleAdd('stinger')}
+      disabled={store.mode === 'play'}
+      title={store.mode === 'play' ? t('mode.tooltip.noEditInPlay') : ''}
+    >{t('toolbar.addStinger')}</button>
+    <button
+      class="btn"
+      type="button"
+      onclick={() => handleAdd('cartouche')}
+      disabled={store.mode === 'play'}
+      title={store.mode === 'play' ? t('mode.tooltip.noEditInPlay') : ''}
+    >{t('toolbar.addCartouche')}</button>
     <button
       class="btn danger"
       type="button"
       onclick={handleDelete}
-      disabled={store.selectedId === null}
-    >
-      {t('toolbar.delete')}
-    </button>
+      disabled={store.selectedId === null || store.mode === 'play'}
+      title={store.mode === 'play' ? t('mode.tooltip.noEditInPlay') : ''}
+    >{t('toolbar.delete')}</button>
   </div>
 
   <div class="group right">
     <button class="btn" type="button" onclick={() => store.recadrer()}>
       {t('toolbar.recadrer')}
+    </button>
+    <button
+      class="btn primary"
+      type="button"
+      onclick={() => store.toggleMode()}
+    >
+      {store.mode === 'play' ? t('toolbar.modeEdit') : t('toolbar.modePlay')}
     </button>
     <button
       class="btn settings-btn"
@@ -264,5 +290,26 @@
     color: var(--warm);
     padding-left: 8px;
     flex-shrink: 0;
+  }
+
+  /* Badge de mode (jalon 8) */
+  .mode-badge {
+    font-family: var(--font-mono);
+    background: transparent;
+    color: var(--accent);
+    padding: 4px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    flex-shrink: 0;
+    transition: all var(--t-fast) var(--ease);
+  }
+  .mode-badge.play {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
   }
 </style>

@@ -32,7 +32,14 @@ const fr = {
   'toolbar.delete': 'Supprimer',
   'toolbar.recadrer': 'Recadrer',
   'toolbar.settings': 'Paramètres',
+  'toolbar.modePlay': '▶ Mode Jeu',
+  'toolbar.modeEdit': 'Mode Préparation',
   'toolbar.tooltip.tauriOnly': 'Disponible uniquement dans la fenêtre Tauri',
+
+  // === Badge de mode ===
+  'mode.edit': 'Préparation',
+  'mode.play': 'Jeu',
+  'mode.tooltip.noEditInPlay': 'Édition désactivée en mode Jeu',
 
   // === Paramètres (modale) ===
   'settings.title': 'Paramètres du scénario',
@@ -142,6 +149,8 @@ const fr = {
   'toast.scenesCreated': '{n} scènes créées',
   'toast.notAudioFile': 'Format audio non reconnu : {name}',
   'toast.noAudioFiles': 'Aucun fichier audio dans le glissé',
+  'toast.triggerPlaceholder': '▶ {title} (audio à venir au jalon 9)',
+  'toast.triggerNoFile': '⚠ Aucun morceau attaché à « {title} »',
 
   // === Confirmations ===
   'confirm.discardChanges': 'Modifications non sauvegardées. Continuer ?',

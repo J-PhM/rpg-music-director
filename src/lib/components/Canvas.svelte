@@ -320,10 +320,27 @@
   // ============================================================
 
   function handleSvgPointerDown(e: PointerEvent): void {
-    // 0. Pan ? (clic-milieu ou Espace + clic-gauche)
+    // 0. Pan ? (clic-milieu ou Espace + clic-gauche) — toujours actif
     if (maybeStartPan(e)) return;
     if (e.button !== 0) return;
     const pt = clientToWorld(e);
+
+    // === Mode Jeu : un clic = trigger, pas d'édition ===
+    if (store.mode === 'play') {
+      const hit = findNodeAt(pt.x, pt.y);
+      if (hit && hit.type !== 'cartouche') {
+        if (hit.localFilePath || hit.ytUrl) {
+          onToast(t('toast.triggerPlaceholder', { title: hit.title }));
+        } else {
+          onToast(t('toast.triggerNoFile', { title: hit.title }));
+        }
+      }
+      // Cartouche en mode Jeu : on ne fait rien au clic simple ; le
+      // double-clic continue à fonctionner pour entrer dedans.
+      return;
+    }
+
+    // === Mode Préparation ===
 
     // 1. Hit sur un port de sortie ? → démarre un drag de connexion.
     const port = findPortAt(pt.x, pt.y);
@@ -657,6 +674,7 @@
 
 <div
   class="canvas-area"
+  class:play-mode={store.mode === 'play'}
   bind:this={canvasAreaEl}
   style:--bg-image={backgroundUrl ? `url("${backgroundUrl}")` : 'none'}
   style:--bg-opacity={store.scenario.appearance.backgroundOpacity / 100}
@@ -775,19 +793,22 @@
           {/if}
 
           <!-- Ports : visuels uniquement, pointer-events:none.
-               Le hit-testing se fait mathématiquement dans handleSvgPointerDown. -->
-          <circle
-            class="port port-out"
-            cx={d.w}
-            cy={d.h / 2}
-            r={PORT_VISUAL_R}
-          />
-          <circle
-            class="port port-in"
-            cx="0"
-            cy={d.h / 2}
-            r={PORT_VISUAL_R}
-          />
+               Le hit-testing se fait mathématiquement dans handleSvgPointerDown.
+               Masqués en mode Jeu (cf. cahier). -->
+          {#if store.mode === 'edit'}
+            <circle
+              class="port port-out"
+              cx={d.w}
+              cy={d.h / 2}
+              r={PORT_VISUAL_R}
+            />
+            <circle
+              class="port port-in"
+              cx="0"
+              cy={d.h / 2}
+              r={PORT_VISUAL_R}
+            />
+          {/if}
         </g>
       {/each}
     </g>
@@ -999,6 +1020,10 @@
   }
   .port-in {
     fill: var(--warm);
+  }
+  /* En mode Jeu, le curseur est plus naturel sur les nœuds (clic = trigger) */
+  .canvas-area.play-mode .node {
+    cursor: pointer;
   }
 
   /* ============================================================
