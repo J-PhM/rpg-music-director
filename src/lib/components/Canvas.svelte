@@ -809,6 +809,15 @@
             </text>
             <text class="cartouche-count" x={d.w / 2} y="62" text-anchor="middle">{subtitle}</text>
 
+            <!-- Indicateur 🌊 si la cartouche a une musique de fond (cf. cahier).
+                 Vert olive si fichier local prêt, terre cuite si URL YouTube
+                 (en attendant le jalon 17 qui activera vraiment YouTube). -->
+            {#if node.bgLocalFilePath}
+              <text class="cartouche-bg-indicator" x={d.w - 12} y="22" text-anchor="end">🌊</text>
+            {:else if node.bgYtUrl}
+              <text class="cartouche-bg-indicator yt" x={d.w - 12} y="22" text-anchor="end">🌊</text>
+            {/if}
+
             <!-- Mini-vue satellite : aperçu des enfants à l'échelle réduite. -->
             {@const preview = miniPreviews[node.id]}
             {#if preview}
@@ -1033,6 +1042,17 @@
     font-style: italic;
     fill: var(--ink-soft);
     pointer-events: none;
+  }
+
+  .cartouche-bg-indicator {
+    font-size: 14px;
+    fill: var(--playing);
+    pointer-events: none;
+  }
+  .cartouche-bg-indicator.yt {
+    /* YouTube non implémenté pour l'instant : indicateur en attente */
+    fill: var(--warm);
+    opacity: 0.6;
   }
 
   /* ============================================================
