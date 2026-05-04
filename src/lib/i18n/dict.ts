@@ -30,6 +30,7 @@ const fr = {
   'toolbar.addStinger': '+ Tada',
   'toolbar.addCartouche': '+ Cartouche',
   'toolbar.delete': 'Supprimer',
+  'toolbar.recadrer': 'Recadrer',
   'toolbar.settings': 'Paramètres',
   'toolbar.tooltip.tauriOnly': 'Disponible uniquement dans la fenêtre Tauri',
 

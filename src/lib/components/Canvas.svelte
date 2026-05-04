@@ -288,9 +288,24 @@
     return store.scenario.nodes.find((n) => n.id === connectFromId) ?? null;
   });
 
-  function clientToSvgPoint(e: PointerEvent): { x: number; y: number } {
+  /**
+   * Coords écran (relatives au coin haut-gauche du SVG) — utilisées
+   * pour les calculs de zoom (ancrage du curseur) et le pan.
+   */
+  function clientToScreen(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const rect = svgEl.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  /**
+   * Coords monde (espace des nœuds, après application inverse du
+   * transform de la vue). Utilisées pour le hit-testing mathématique
+   * et pour `store.moveNode`.
+   */
+  function clientToWorld(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const s = clientToScreen(e);
+    const v = store.currentView;
+    return { x: (s.x - v.panX) / v.scale, y: (s.y - v.panY) / v.scale };
   }
 
   // ============================================================
@@ -298,8 +313,10 @@
   // ============================================================
 
   function handleSvgPointerDown(e: PointerEvent): void {
+    // 0. Pan ? (clic-milieu ou Espace + clic-gauche)
+    if (maybeStartPan(e)) return;
     if (e.button !== 0) return;
-    const pt = clientToSvgPoint(e);
+    const pt = clientToWorld(e);
 
     // 1. Hit sur un port de sortie ? → démarre un drag de connexion.
     const port = findPortAt(pt.x, pt.y);
@@ -327,7 +344,14 @@
   }
 
   function handleSvgPointerMove(e: PointerEvent): void {
-    const pt = clientToSvgPoint(e);
+    if (panning) {
+      const cur = clientToScreen(e);
+      const view = store.currentView;
+      view.panX = panStart.view.panX + (cur.x - panStart.screen.x);
+      view.panY = panStart.view.panY + (cur.y - panStart.screen.y);
+      return;
+    }
+    const pt = clientToWorld(e);
     if (connectFromId !== null) {
       connectPreviewEnd = pt;
       return;
@@ -338,8 +362,18 @@
   }
 
   function handleSvgPointerUp(e: PointerEvent): void {
+    if (panning) {
+      panning = false;
+      try {
+        svgEl.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      updateCursor();
+      return;
+    }
     if (connectFromId !== null) {
-      const pt = clientToSvgPoint(e);
+      const pt = clientToWorld(e);
       const target = findPortAt(pt.x, pt.y);
       if (target && target.role === 'in') {
         const result = store.addConnection(connectFromId, target.nodeId);
@@ -386,13 +420,83 @@
    * cohérent avec le reste du système.
    */
   function handleSvgDblClick(e: MouseEvent): void {
-    const rect = svgEl.getBoundingClientRect();
-    const wp = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const wp = clientToWorld(e);
     const hit = findNodeAt(wp.x, wp.y);
     if (hit && hit.type === 'cartouche') {
       store.enterCartouche(hit.id);
     }
   }
+
+  // ============================================================
+  // Zoom (jalon 6)
+  // ============================================================
+
+  /** Facteur multiplicatif par cran de molette. */
+  const ZOOM_FACTOR = 1.15;
+
+  function handleWheel(e: WheelEvent): void {
+    // Bloque le scroll de page que le navigateur ferait sinon.
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+    const view = store.currentView;
+    const anchor = clientToScreen(e);
+    store.setZoomAt(view.scale * factor, anchor.x, anchor.y);
+  }
+
+  // ============================================================
+  // Pan (jalon 6)
+  // ============================================================
+
+  /**
+   * Pan actif via clic-milieu OU Espace + clic-gauche. On capture le
+   * pointeur sur la SVG racine pour suivre le curseur même s'il sort.
+   */
+  let panning = $state<boolean>(false);
+  let spaceHeld = $state<boolean>(false);
+  let panStart = { screen: { x: 0, y: 0 }, view: { panX: 0, panY: 0 } };
+
+  function handleWindowKeyDown(e: KeyboardEvent): void {
+    if (e.code === 'Space' && !spaceHeld) {
+      const tag = (document.activeElement?.tagName ?? '').toUpperCase();
+      // Ignore l'espace si le focus est sur un champ texte / textarea.
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      spaceHeld = true;
+      updateCursor();
+      e.preventDefault();
+    }
+  }
+
+  function handleWindowKeyUp(e: KeyboardEvent): void {
+    if (e.code === 'Space') {
+      spaceHeld = false;
+      updateCursor();
+    }
+  }
+
+  function maybeStartPan(e: PointerEvent): boolean {
+    // Conditions : clic-milieu OU clic-gauche + Espace tenu.
+    const wantPan = e.button === 1 || (e.button === 0 && spaceHeld);
+    if (!wantPan) return false;
+    panning = true;
+    const view = store.currentView;
+    panStart = {
+      screen: clientToScreen(e),
+      view: { panX: view.panX, panY: view.panY },
+    };
+    svgEl.setPointerCapture(e.pointerId);
+    updateCursor();
+    e.preventDefault();
+    return true;
+  }
+
+  function updateCursor(): void {
+    if (!canvasAreaEl) return;
+    if (panning) canvasAreaEl.style.cursor = 'grabbing';
+    else if (spaceHeld) canvasAreaEl.style.cursor = 'grab';
+    else canvasAreaEl.style.cursor = '';
+  }
+
+  let canvasAreaEl: HTMLDivElement;
 
   // ============================================================
   // Image de fond (jalon 4.5)
@@ -429,8 +533,11 @@
   });
 </script>
 
+<svelte:window onkeydown={handleWindowKeyDown} onkeyup={handleWindowKeyUp} />
+
 <div
   class="canvas-area"
+  bind:this={canvasAreaEl}
   style:--bg-image={backgroundUrl ? `url("${backgroundUrl}")` : 'none'}
   style:--bg-opacity={store.scenario.appearance.backgroundOpacity / 100}
 >
@@ -442,7 +549,15 @@
     onpointerup={handleSvgPointerUp}
     onpointercancel={handleSvgPointerUp}
     ondblclick={handleSvgDblClick}
+    onwheel={handleWheel}
   >
+    <!-- Viewport : applique le zoom + pan du cartouche courant.
+         Tout le contenu (connexions, nœuds, ports) est dessiné en
+         coords monde et le transform fait l'échelle vers l'écran. -->
+    <g
+      class="viewport"
+      transform="translate({store.currentView.panX},{store.currentView.panY}) scale({store.currentView.scale})"
+    >
     <!-- Couche 1 : connexions (sous les nœuds) -->
     <g class="connections-layer">
       {#each visibleCurves as conn (conn.index)}
@@ -555,6 +670,7 @@
         </g>
       {/each}
     </g>
+    </g>
   </svg>
 
   {#if store.visibleNodes.length === 0}
@@ -562,6 +678,9 @@
       <p>{t('empty.canvas')}</p>
     </div>
   {/if}
+
+  <!-- Indicateur de zoom (jalon 6) en bas à gauche du canvas -->
+  <div class="zoom-indicator">{Math.round(store.currentView.scale * 100)}&nbsp;%</div>
 </div>
 
 <style>
@@ -752,6 +871,28 @@
   }
   .port-in {
     fill: var(--warm);
+  }
+
+  /* ============================================================
+     Indicateur de zoom (overlay bas-gauche)
+     ============================================================ */
+
+  .zoom-indicator {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    padding: 4px 12px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    pointer-events: none;
+    z-index: 50;
+    user-select: none;
   }
 
   /* ============================================================

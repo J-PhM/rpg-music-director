@@ -19,9 +19,14 @@ import { emptyScenario, nextId } from '$lib/model/defaults';
 import { EXAMPLE_SCENARIO } from '$lib/model/example';
 import { getCartoucheParent } from '$lib/model/navigation';
 import { toJson } from '$lib/model/serialize';
-import type { Node, NodeId, NodeType, Scenario } from '$lib/model/types';
+import { viewKey, type Node, type NodeId, type NodeType, type Scenario, type View } from '$lib/model/types';
 import { setLang } from '$lib/i18n/i18n.svelte';
 import { createNode } from '$lib/model/defaults';
+
+const MIN_SCALE = 0.2;
+const MAX_SCALE = 4;
+/** Marge en pixels écran pour le bouton Recadrer (top-left visible). */
+const RECADRER_MARGIN = 60;
 
 class ScenarioStore {
   /** Scénario actif. Toutes les opérations passent par ce store. */
@@ -74,14 +79,36 @@ class ScenarioStore {
   });
 
   /**
-   * Nœuds visibles dans le cartouche courant. Pour jalon 3, on n'a pas
-   * encore la navigation hiérarchique — on affiche les nœuds racine
-   * (parentId === null). Au jalon 5 on filtrera par
-   * `currentCartoucheId`.
+   * Nœuds visibles dans le cartouche courant.
    */
   visibleNodes = $derived.by((): Node[] => {
     return this.scenario.nodes.filter((n) => n.parentId === this.scenario.currentCartoucheId);
   });
+
+  /**
+   * Vue (zoom + pan) du cartouche courant. **Lecture seule** : la
+   * création éventuelle d'une vue manquante se fait dans
+   * `ensureCurrentViewExists` (appelé à la navigation et au load),
+   * pas ici — Svelte 5 interdit les mutations dans un `$derived`.
+   */
+  currentView = $derived.by((): View => {
+    const k = viewKey(this.scenario.currentCartoucheId);
+    return this.scenario.viewByCartouche[k] ?? { scale: 1, panX: 0, panY: 0 };
+  });
+
+  /**
+   * S'assure qu'une vue existe pour le cartouche courant. À appeler
+   * AVANT toute mutation potentielle (zoom, pan, recadrer). Évite
+   * que les modifications partent dans un objet jetable retourné par
+   * le derived ci-dessus.
+   */
+  private ensureCurrentViewExists(): View {
+    const k = viewKey(this.scenario.currentCartoucheId);
+    if (!this.scenario.viewByCartouche[k]) {
+      this.scenario.viewByCartouche[k] = { scale: 1, panX: 0, panY: 0 };
+    }
+    return this.scenario.viewByCartouche[k];
+  }
 
   // ============================================================
   // Actions — chargement
@@ -94,6 +121,7 @@ class ScenarioStore {
     this.currentPath = path;
     this.baseSerialization = toJson(scenario);
     setLang(scenario.language);
+    this.ensureCurrentViewExists();
   }
 
   /** Charge le scénario d'exemple. */
@@ -135,6 +163,7 @@ class ScenarioStore {
   enterCartouche(cartoucheId: NodeId): void {
     this.scenario.currentCartoucheId = cartoucheId;
     this.selectedId = null;
+    this.ensureCurrentViewExists();
   }
 
   /**
@@ -146,6 +175,7 @@ class ScenarioStore {
     const parent = getCartoucheParent(this.scenario, this.scenario.currentCartoucheId);
     this.scenario.currentCartoucheId = parent;
     this.selectedId = null;
+    this.ensureCurrentViewExists();
   }
 
   /**
@@ -155,6 +185,7 @@ class ScenarioStore {
   goToCartouche(cartoucheId: NodeId | null): void {
     this.scenario.currentCartoucheId = cartoucheId;
     this.selectedId = null;
+    this.ensureCurrentViewExists();
   }
 
   // ============================================================
@@ -209,6 +240,52 @@ class ScenarioStore {
       node.x = x;
       node.y = y;
     }
+  }
+
+  // ============================================================
+  // Actions — vue (zoom + pan)
+  // ============================================================
+
+  /**
+   * Zoome en gardant le point d'ancrage écran fixe. Formule :
+   *   newPan = anchor - (anchor - oldPan) * newScale / oldScale
+   * Garantit que le point monde sous le curseur reste visuellement
+   * au même endroit après le zoom.
+   */
+  setZoomAt(rawScale: number, anchorScreenX: number, anchorScreenY: number): void {
+    const view = this.ensureCurrentViewExists();
+    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, rawScale));
+    if (newScale === view.scale) return;
+    view.panX = anchorScreenX - ((anchorScreenX - view.panX) * newScale) / view.scale;
+    view.panY = anchorScreenY - ((anchorScreenY - view.panY) * newScale) / view.scale;
+    view.scale = newScale;
+  }
+
+  /** Translate la vue de (dx, dy) en pixels écran. */
+  panBy(dx: number, dy: number): void {
+    const view = this.ensureCurrentViewExists();
+    view.panX += dx;
+    view.panY += dy;
+  }
+
+  /**
+   * Recadre la vue : zoom à 1×, pan tel que le coin haut-gauche du
+   * bounding-box des enfants visibles atterrisse à (60, 60) écran. Si
+   * aucun enfant, ramène l'origine à (60, 60).
+   */
+  recadrer(): void {
+    const view = this.ensureCurrentViewExists();
+    view.scale = 1;
+    const children = this.visibleNodes;
+    if (children.length === 0) {
+      view.panX = RECADRER_MARGIN;
+      view.panY = RECADRER_MARGIN;
+      return;
+    }
+    const minX = Math.min(...children.map((c) => c.x));
+    const minY = Math.min(...children.map((c) => c.y));
+    view.panX = RECADRER_MARGIN - minX;
+    view.panY = RECADRER_MARGIN - minY;
   }
 
   // ============================================================

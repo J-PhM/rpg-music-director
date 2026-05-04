@@ -193,6 +193,9 @@
   </div>
 
   <div class="group right">
+    <button class="btn" type="button" onclick={() => store.recadrer()}>
+      {t('toolbar.recadrer')}
+    </button>
     <button
       class="btn settings-btn"
       type="button"
