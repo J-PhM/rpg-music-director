@@ -16,3 +16,6 @@ desktop.ini
 # JetBrains IDEs
 .idea/
 *.iml
+
+# Logs des runs locaux (tauri dev, vite, etc.)
+*.log
