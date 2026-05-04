@@ -123,6 +123,102 @@ body {
 }
 
 /* ============================================================
+   Boutons standards (mono petites caps, sobre)
+   ============================================================ */
+
+.btn {
+  font-family: var(--font-mono);
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 6px 14px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 400;
+  transition:
+    background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--paper-deep);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn.primary {
+  background: var(--primary);
+  color: var(--paper);
+  border-color: var(--primary);
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.btn.ghost {
+  color: var(--ink-soft);
+  border-style: dashed;
+}
+.btn.danger {
+  color: var(--warm);
+  border-color: var(--warm);
+}
+.btn.danger:hover:not(:disabled) {
+  background: var(--warm);
+  color: var(--paper);
+  border-color: var(--warm);
+}
+
+/* ============================================================
+   Champs de formulaire (input, textarea, select)
+   ============================================================ */
+
+.field {
+  width: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+  border-radius: 2px;
+  font-size: 14px;
+  font-family: var(--font-text);
+  transition: border-color var(--t-fast) var(--ease);
+}
+.field:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+textarea.field {
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.45;
+}
+
+/* ============================================================
+   Label façon Lemniscate (mono petites caps avec espacement)
+   ============================================================ */
+
+.label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  margin-top: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 400;
+}
+
+/* ============================================================
    Scrollbars discrètes (cohérence cross-platform)
    ============================================================ */
 
