@@ -151,6 +151,23 @@ const fr = {
   'toast.noAudioFiles': 'Aucun fichier audio dans le glissé',
   'toast.triggerPlaceholder': '▶ {title} (audio à venir au jalon 9)',
   'toast.triggerNoFile': '⚠ Aucun morceau attaché à « {title} »',
+  'toast.audioError': 'Erreur audio : {msg}',
+  'toast.audioPushed': '▶ {title}',
+  'toast.audioStinger': '✨ {title}',
+  'toast.audioStopped': 'Tout arrêté',
+  'toast.audioFadingOut': 'Fade out…',
+
+  // === Barre de lecture (jalon 9) ===
+  'playback.now': 'En cours',
+  'playback.tada': 'Tada',
+  'playback.stack': 'Pile',
+  'playback.silent': '— silence —',
+  'playback.empty': '—',
+  'playback.layers.zero': '— vide —',
+  'playback.layers.one': '1 couche',
+  'playback.layers.many': '{n} couches',
+  'playback.stopAll': 'Tout arrêter',
+  'playback.fadeOut': 'Fade out',
 
   // === Confirmations ===
   'confirm.discardChanges': 'Modifications non sauvegardées. Continuer ?',

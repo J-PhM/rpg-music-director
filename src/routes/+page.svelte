@@ -13,6 +13,7 @@
   import Breadcrumb from '$lib/components/Breadcrumb.svelte';
   import Canvas from '$lib/components/Canvas.svelte';
   import Inspector from '$lib/components/Inspector.svelte';
+  import PlaybackBar from '$lib/components/PlaybackBar.svelte';
   import Settings from '$lib/components/Settings.svelte';
   import Toolbar from '$lib/components/Toolbar.svelte';
 
@@ -47,6 +48,8 @@
     <Inspector />
   </div>
 
+  <PlaybackBar onToast={showToast} />
+
   <Settings open={settingsOpen} onClose={closeSettings} onToast={showToast} />
 
   {#if toastMsg}
@@ -58,7 +61,7 @@
   .app {
     height: 100vh;
     display: grid;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto 1fr auto;
     overflow: hidden;
   }
 

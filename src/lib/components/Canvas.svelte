@@ -37,6 +37,7 @@
     type DropEvent,
     type Unsubscribe,
   } from '$lib/io/dragDrop';
+  import { engine } from '$lib/audio/engine.svelte';
 
   interface Props {
     onToast: (msg: string) => void;
@@ -325,18 +326,32 @@
     if (e.button !== 0) return;
     const pt = clientToWorld(e);
 
-    // === Mode Jeu : un clic = trigger, pas d'édition ===
+    // === Mode Jeu : un clic = trigger via le moteur audio ===
     if (store.mode === 'play') {
       const hit = findNodeAt(pt.x, pt.y);
       if (hit && hit.type !== 'cartouche') {
-        if (hit.localFilePath || hit.ytUrl) {
-          onToast(t('toast.triggerPlaceholder', { title: hit.title }));
-        } else {
+        if (!hit.localFilePath) {
           onToast(t('toast.triggerNoFile', { title: hit.title }));
+        } else if (hit.type === 'stinger') {
+          // Tada : canal séparé, ne touche pas la pile.
+          engine
+            .playStinger(hit)
+            .then(() => onToast(t('toast.audioStinger', { title: hit.title })))
+            .catch((err) =>
+              onToast(t('toast.audioError', { msg: err instanceof Error ? err.message : String(err) })),
+            );
+        } else {
+          // Scène ou personnage : empilé au sommet.
+          engine
+            .pushLayer(hit, hit.type)
+            .then(() => onToast(t('toast.audioPushed', { title: hit.title })))
+            .catch((err) =>
+              onToast(t('toast.audioError', { msg: err instanceof Error ? err.message : String(err) })),
+            );
         }
       }
-      // Cartouche en mode Jeu : on ne fait rien au clic simple ; le
-      // double-clic continue à fonctionner pour entrer dedans.
+      // Cartouche en mode Jeu : clic simple = no-op ; le double-clic
+      // continue à fonctionner pour entrer dedans.
       return;
     }
 
