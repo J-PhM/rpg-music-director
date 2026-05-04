@@ -9,7 +9,7 @@
  * L'UI affiche les avertissements sous forme de toasts au chargement.
  */
 
-import type { Connection, Node, NodeId, Scenario } from './types';
+import { DEFAULT_APPEARANCE, type Connection, type Node, type NodeId, type Scenario } from './types';
 
 export class ScenarioValidationError extends Error {
   constructor(message: string) {
@@ -69,6 +69,20 @@ export function validateScenario(s: unknown): ValidationResult {
   if (typeof scenario.theme !== 'string' || !VALID_THEMES.has(scenario.theme)) {
     warnings.push(`Thème invalide ou manquant (${scenario.theme}), repli sur 'light'.`);
     scenario.theme = 'light';
+  }
+
+  // appearance : ajouté à la v1 mais peut manquer (fichiers anciens
+  // de la même version qui ont été créés avant ce champ). Repli soft.
+  if (!scenario.appearance || typeof scenario.appearance !== 'object') {
+    scenario.appearance = { ...DEFAULT_APPEARANCE };
+  } else {
+    const a = scenario.appearance as Record<string, unknown>;
+    if (typeof a.backgroundImagePath !== 'string' && a.backgroundImagePath !== null) {
+      a.backgroundImagePath = DEFAULT_APPEARANCE.backgroundImagePath;
+    }
+    if (typeof a.backgroundOpacity !== 'number' || a.backgroundOpacity < 0 || a.backgroundOpacity > 100) {
+      a.backgroundOpacity = DEFAULT_APPEARANCE.backgroundOpacity;
+    }
   }
 
   // Validation des nœuds

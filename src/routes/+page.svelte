@@ -12,9 +12,10 @@
 
   import Canvas from '$lib/components/Canvas.svelte';
   import Inspector from '$lib/components/Inspector.svelte';
+  import Settings from '$lib/components/Settings.svelte';
   import Toolbar from '$lib/components/Toolbar.svelte';
 
-  // Toast partagé : la Toolbar émet, la page affiche.
+  // Toast partagé : Toolbar/Canvas/Settings émettent, la page affiche.
   let toastMsg = $state<string>('');
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -25,15 +26,26 @@
       toastMsg = '';
     }, 1800);
   }
+
+  // État de la modale Paramètres
+  let settingsOpen = $state<boolean>(false);
+  function openSettings(): void {
+    settingsOpen = true;
+  }
+  function closeSettings(): void {
+    settingsOpen = false;
+  }
 </script>
 
 <div class="app">
-  <Toolbar onToast={showToast} />
+  <Toolbar onToast={showToast} onOpenSettings={openSettings} />
 
   <div class="main">
     <Canvas onToast={showToast} />
     <Inspector />
   </div>
+
+  <Settings open={settingsOpen} onClose={closeSettings} onToast={showToast} />
 
   {#if toastMsg}
     <div class="toast">{toastMsg}</div>

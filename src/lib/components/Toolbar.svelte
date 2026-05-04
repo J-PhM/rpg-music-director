@@ -11,8 +11,9 @@
 
   interface Props {
     onToast: (msg: string) => void;
+    onOpenSettings: () => void;
   }
-  let { onToast }: Props = $props();
+  let { onToast, onOpenSettings }: Props = $props();
 
   const APP_VERSION = '0.1.0';
 
@@ -191,9 +192,18 @@
     </button>
   </div>
 
-  {#if store.modified}
-    <span class="modified" title={t('state.modifiedTooltip')}>●&nbsp;{t('state.modified')}</span>
-  {/if}
+  <div class="group right">
+    <button
+      class="btn settings-btn"
+      type="button"
+      onclick={onOpenSettings}
+      title={t('toolbar.settings')}
+      aria-label={t('toolbar.settings')}
+    >⚙</button>
+    {#if store.modified}
+      <span class="modified" title={t('state.modifiedTooltip')}>●&nbsp;{t('state.modified')}</span>
+    {/if}
+  </div>
 </header>
 
 <style>
@@ -228,8 +238,19 @@
     gap: 6px;
   }
 
+  .group.right {
+    margin-left: auto;
+  }
+
   .separator {
     flex: 1;
+  }
+
+  .settings-btn {
+    font-size: 14px;
+    padding: 4px 10px;
+    line-height: 1;
+    letter-spacing: 0;
   }
 
   .modified {

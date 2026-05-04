@@ -13,7 +13,7 @@
  *   - Pas de `bgPlaylistIds`/`bgPlaylistMode` → playlist vide, mode 'single'.
  */
 
-import { SCENARIO_FILE_VERSION, type Scenario, type ScenarioFile } from './types';
+import { DEFAULT_APPEARANCE, SCENARIO_FILE_VERSION, type Scenario, type ScenarioFile } from './types';
 import { validateScenario, type ValidationResult } from './validate';
 
 // ============================================================
@@ -30,6 +30,7 @@ export function toJson(scenario: Scenario): string {
     campaignTitle: scenario.campaignTitle,
     language: scenario.language,
     theme: scenario.theme,
+    appearance: scenario.appearance,
     nodes: scenario.nodes,
     connections: scenario.connections,
     viewByCartouche: scenario.viewByCartouche,
@@ -83,6 +84,7 @@ export function fromJson(jsonText: string): LoadResult {
     campaignTitle: migratedRaw.campaignTitle as string,
     language: migratedRaw.language as Scenario['language'],
     theme: migratedRaw.theme as Scenario['theme'],
+    appearance: migratedRaw.appearance as Scenario['appearance'],
     nodes: migratedRaw.nodes as Scenario['nodes'],
     connections: migratedRaw.connections as Scenario['connections'],
     viewByCartouche: migratedRaw.viewByCartouche as Scenario['viewByCartouche'],
@@ -111,6 +113,7 @@ function migrateFromProtoV9(raw: Record<string, unknown>): Record<string, unknow
     campaignTitle: typeof raw.campaignTitle === 'string' ? raw.campaignTitle : 'Campagne',
     language: 'fr',
     theme: 'light',
+    appearance: { ...DEFAULT_APPEARANCE },
     currentCartoucheId: raw.currentCartoucheId !== undefined ? raw.currentCartoucheId : null,
     viewByCartouche:
       raw.viewByCartouche && typeof raw.viewByCartouche === 'object'

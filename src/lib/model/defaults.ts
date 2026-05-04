@@ -6,14 +6,15 @@
  * facilement testables.
  */
 
-import type {
-  CartoucheNode,
-  CharacterNode,
-  Node,
-  NodeId,
-  SceneNode,
-  Scenario,
-  StingerNode,
+import {
+  DEFAULT_APPEARANCE,
+  type CartoucheNode,
+  type CharacterNode,
+  type Node,
+  type NodeId,
+  type SceneNode,
+  type Scenario,
+  type StingerNode,
 } from './types';
 
 interface NodePosition {
@@ -102,6 +103,7 @@ export function emptyScenario(campaignTitle = 'Nouvelle campagne'): Scenario {
     campaignTitle,
     language: 'fr',
     theme: 'light',
+    appearance: { ...DEFAULT_APPEARANCE },
     nodes: [],
     connections: [],
     viewByCartouche: { root: { scale: 1, panX: 0, panY: 0 } },

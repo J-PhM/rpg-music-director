@@ -30,7 +30,32 @@ const fr = {
   'toolbar.addStinger': '+ Tada',
   'toolbar.addCartouche': '+ Cartouche',
   'toolbar.delete': 'Supprimer',
+  'toolbar.settings': 'Paramètres',
   'toolbar.tooltip.tauriOnly': 'Disponible uniquement dans la fenêtre Tauri',
+
+  // === Paramètres (modale) ===
+  'settings.title': 'Paramètres du scénario',
+  'settings.close': 'Fermer',
+  'settings.section.appearance': 'Apparence',
+  'settings.section.language': 'Langue',
+  'settings.bg.label': 'Image de fond',
+  'settings.bg.default': 'Image par défaut',
+  'settings.bg.custom': 'Choisir une image…',
+  'settings.bg.none': 'Aucune image',
+  'settings.bg.current.default': 'Fossile (par défaut)',
+  'settings.bg.current.none': 'Aucune image',
+  'settings.bg.opacity': 'Opacité',
+  'settings.bg.opacityValue': '{n} %',
+  'settings.bg.hint':
+    'L’image apparaît derrière le canvas. Une opacité basse (10–15 %) est recommandée pour ne pas distraire pendant l’édition.',
+  'settings.lang.label': 'Langue d’affichage',
+  'settings.lang.fr': 'Français',
+  'settings.lang.en': 'English',
+  'settings.lang.hint':
+    'La langue est mémorisée dans le scénario. Au chargement d’un fichier partagé, la langue d’affichage suit celle du scénario.',
+  'settings.toast.bgChanged': 'Fond mis à jour',
+  'settings.toast.bgRemoved': 'Fond retiré',
+  'settings.toast.bgReset': 'Fond par défaut',
 
   // === Indicateurs d'état ===
   'state.modified': 'Modifié',

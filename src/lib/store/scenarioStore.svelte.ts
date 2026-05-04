@@ -156,6 +156,29 @@ class ScenarioStore {
   }
 
   // ============================================================
+  // Actions — paramètres (apparence + langue)
+  // ============================================================
+
+  setBackgroundImagePath(path: string | null): void {
+    this.scenario.appearance.backgroundImagePath = path;
+  }
+
+  setBackgroundOpacity(opacity: number): void {
+    const clamped = Math.max(0, Math.min(100, Math.round(opacity)));
+    this.scenario.appearance.backgroundOpacity = clamped;
+  }
+
+  /**
+   * Change la langue du scénario ET la langue active de l'i18n.
+   * Appelle setLang du module i18n pour propager le changement à
+   * tous les composants qui utilisent t().
+   */
+  setScenarioLanguage(lang: 'fr' | 'en'): void {
+    this.scenario.language = lang;
+    setLang(lang);
+  }
+
+  // ============================================================
   // Actions — manipulation des connexions
   // ============================================================
 

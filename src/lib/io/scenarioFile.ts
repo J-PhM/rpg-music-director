@@ -84,6 +84,24 @@ export async function saveScenarioAs(
 }
 
 /**
+ * Affiche le dialogue système de sélection d'image. Renvoie le chemin
+ * absolu choisi, ou `null` si l'utilisateur annule. Utilisé par la
+ * modale Paramètres pour choisir une image de fond personnalisée.
+ */
+export async function pickImage(): Promise<string | null> {
+  const selected = await openDialog({
+    multiple: false,
+    filters: [
+      { name: 'Image', extensions: ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif'] },
+      { name: 'Tous les fichiers', extensions: ['*'] },
+    ],
+    title: 'Choisir une image de fond',
+  });
+  if (!selected || typeof selected !== 'string') return null;
+  return selected;
+}
+
+/**
  * Détecte si on tourne dans une fenêtre Tauri (par opposition au preview
  * navigateur seul). Utile pour adapter les boutons : dans le navigateur,
  * on désactive Ouvrir/Enregistrer plutôt que de laisser une erreur sortir.

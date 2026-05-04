@@ -28,6 +28,7 @@
   import { isCartouche, type Node, type NodeId } from '$lib/model/types';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
+  import { isTauriContext } from '$lib/io/scenarioFile';
 
   interface Props {
     onToast: (msg: string) => void;
@@ -284,9 +285,47 @@
     store.deleteConnectionByIndex(index);
     onToast(t('toast.connectionDeleted'));
   }
+
+  // ============================================================
+  // Image de fond (jalon 4.5)
+  // ============================================================
+
+  /**
+   * URL utilisable par CSS pour l'image de fond, dérivée de
+   * `appearance.backgroundImagePath`. Trois cas :
+   * - null   → image bundlée par défaut (servie par Vite/SvelteKit)
+   * - ''     → pas d'image
+   * - chemin → fichier local : convertFileSrc (Tauri uniquement)
+   *
+   * En preview navigateur, les chemins absolus ne peuvent pas être
+   * chargés (sécurité) → on retombe sur l'image par défaut.
+   */
+  const backgroundUrl = $derived.by((): string | null => {
+    const path = store.scenario.appearance.backgroundImagePath;
+    if (path === '') return null;
+    if (path === null) return '/textures/fossil-default.jpg';
+    // Chemin custom : nécessite Tauri pour servir le fichier local
+    if (isTauriContext()) {
+      // Import dynamique pour éviter de charger l'API Tauri en preview
+      // (ce convertFileSrc est synchrone une fois importé)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const tauriCore = (window as unknown as { __TAURI__?: { core?: { convertFileSrc?: (p: string) => string } } }).__TAURI__;
+      if (tauriCore?.core?.convertFileSrc) {
+        return tauriCore.core.convertFileSrc(path);
+      }
+      // Fallback : tente le format URL directement (asset.localhost)
+      return `https://asset.localhost/${encodeURIComponent(path).replaceAll('%2F', '/').replaceAll('%5C', '/')}`;
+    }
+    // En preview navigateur, repli sur l'image par défaut
+    return '/textures/fossil-default.jpg';
+  });
 </script>
 
-<div class="canvas-area">
+<div
+  class="canvas-area"
+  style:--bg-image={backgroundUrl ? `url("${backgroundUrl}")` : 'none'}
+  style:--bg-opacity={store.scenario.appearance.backgroundOpacity / 100}
+>
   <svg
     bind:this={svgEl}
     role="presentation"
@@ -392,11 +431,31 @@
     width: 100%;
   }
 
+  /* Image de fond optionnelle (par défaut le fossile bundlé). Mise
+     en pseudo-élément pour pouvoir contrôler l'opacité indépendamment
+     du contenu. mix-blend-mode: multiply pour intégrer la texture
+     dans le vélin sans dénaturer les couleurs des nœuds. */
+  .canvas-area::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--bg-image, none);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: var(--bg-opacity, 0);
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 0;
+  }
+
   svg {
     display: block;
     width: 100%;
     height: 100%;
     cursor: default;
+    position: relative;
+    z-index: 1;
   }
 
   /* ============================================================

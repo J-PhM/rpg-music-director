@@ -117,10 +117,32 @@ export function viewKey(cartoucheId: NodeId | null): ViewKey {
 export type Language = 'fr' | 'en';
 export type Theme = 'light' | 'dark';
 
+/**
+ * Préférences d'apparence stockées par scénario. Permet à un MJ
+ * d'avoir une texture de fond différente par campagne (parchemin
+ * pour D&D, ciel étoilé pour Star Wars, etc.).
+ *
+ * Conventions :
+ * - `backgroundImagePath === null` → utiliser l'image bundlée par défaut (fossile).
+ * - `backgroundImagePath === ''`   → ne pas afficher d'image (fond uni vélin).
+ * - `backgroundImagePath === '/...'` → chemin absolu vers une image personnalisée.
+ * - `backgroundOpacity` est en pourcentage 0–100 (12 = subtil, 40 = présent).
+ */
+export interface Appearance {
+  backgroundImagePath: string | null;
+  backgroundOpacity: number;
+}
+
+export const DEFAULT_APPEARANCE: Appearance = {
+  backgroundImagePath: null, // = image bundlée par défaut
+  backgroundOpacity: 12,
+};
+
 export interface Scenario {
   campaignTitle: string;
   language: Language;
   theme: Theme;
+  appearance: Appearance;
   nodes: Node[];
   connections: Connection[];
   viewByCartouche: Record<ViewKey, View>;
@@ -135,6 +157,7 @@ export interface ScenarioFile {
   campaignTitle: string;
   language: Language;
   theme: Theme;
+  appearance: Appearance;
   nodes: Node[];
   connections: Connection[];
   viewByCartouche: Record<ViewKey, View>;

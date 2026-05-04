@@ -13,6 +13,10 @@ export const EXAMPLE_SCENARIO: Scenario = {
   campaignTitle: 'Les Masques de Nyarlathotep',
   language: 'fr',
   theme: 'light',
+  appearance: {
+    backgroundImagePath: null, // = fossile par défaut
+    backgroundOpacity: 12,
+  },
   currentCartoucheId: null,
   viewByCartouche: {
     root: { scale: 1, panX: 0, panY: 0 },
