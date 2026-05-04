@@ -547,14 +547,25 @@
   /**
    * Convertit une position fenêtre Tauri en coords monde du canvas.
    * Renvoie null si la position est en dehors du canvas-area.
+   *
+   * **Important** : Tauri 2 renvoie les positions du drop event en
+   * pixels PHYSIQUES de l'OS (PhysicalPosition côté Rust). Les
+   * mesures DOM (getBoundingClientRect) sont en pixels LOGIQUES
+   * (CSS). Si l'utilisateur a un DPI scaling Windows ≠ 100% (par
+   * exemple 125%, 150%, 200% sur écran 4K), la position physique
+   * vaut `logical * devicePixelRatio`. On divise donc par DPR pour
+   * retrouver la position logique avant les calculs.
    */
   function tauriWindowToWorld(
     pos: { x: number; y: number },
   ): { x: number; y: number } | null {
     if (!canvasAreaEl) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const logicalX = pos.x / dpr;
+    const logicalY = pos.y / dpr;
     const rect = canvasAreaEl.getBoundingClientRect();
-    const cx = pos.x - rect.left;
-    const cy = pos.y - rect.top;
+    const cx = logicalX - rect.left;
+    const cy = logicalY - rect.top;
     if (cx < 0 || cy < 0 || cx > rect.width || cy > rect.height) return null;
     const v = store.currentView;
     return { x: (cx - v.panX) / v.scale, y: (cy - v.panY) / v.scale };
