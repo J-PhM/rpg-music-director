@@ -297,6 +297,20 @@
   });
 
   /**
+   * Ensemble des nodeIds actuellement présents dans la pile audio
+   * ou en tant que stinger en cours. Sert au visuel "playing"
+   * (bordure vert olive + pulsation) sur les nœuds correspondants.
+   * Inclut les couches en sourdine de la pile — elles sont
+   * "actives" même si on ne les entend pas.
+   */
+  const playingIds = $derived.by((): Set<NodeId> => {
+    const ids = new Set<NodeId>();
+    for (const layer of engine.stack) ids.add(layer.nodeId);
+    if (engine.stinger) ids.add(engine.stinger.nodeId);
+    return ids;
+  });
+
+  /**
    * Coords écran (relatives au coin haut-gauche du SVG) — utilisées
    * pour les calculs de zoom (ancrage du curseur) et le pan.
    */
@@ -780,6 +794,7 @@
         <g
           class="node {node.type}"
           class:selected={isSelected}
+          class:playing={playingIds.has(node.id)}
           class:dragging={nodeDragId === node.id}
           class:drop-target={dropTargetId === node.id}
           transform="translate({node.x},{node.y})"
@@ -927,11 +942,37 @@
     stroke-width: 2;
   }
 
-  /* Cible de drop pendant un drag de fichier (jalon 7) */
+  /* Lecture en cours : vert olive avec pulsation subtile (cf. cahier).
+     Surcharge la sélection — l'info "ça joue" prime visuellement. */
+  .node.playing .node-bg {
+    stroke: var(--playing);
+    stroke-width: 2.5;
+    animation: playing-pulse 2.2s ease-in-out infinite;
+  }
+  .node.cartouche.playing .node-bg {
+    stroke: var(--playing);
+    stroke-width: 2.5;
+    stroke-dasharray: none;
+    animation: playing-pulse 2.2s ease-in-out infinite;
+  }
+
+  @keyframes playing-pulse {
+    0%,
+    100% {
+      stroke-opacity: 1;
+    }
+    50% {
+      stroke-opacity: 0.55;
+    }
+  }
+
+  /* Cible de drop pendant un drag de fichier (jalon 7) — surcharge tout
+     le reste pendant le geste, c'est l'état le plus urgent visuellement. */
   .node.drop-target .node-bg {
     stroke: var(--transverse);
     stroke-width: 2;
     stroke-dasharray: 4 3;
+    animation: none;
   }
 
   .node.scene .node-bg {
