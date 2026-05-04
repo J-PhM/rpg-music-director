@@ -45,7 +45,7 @@
 
   <div class="main">
     <Canvas onToast={showToast} />
-    <Inspector />
+    <Inspector onToast={showToast} />
   </div>
 
   <PlaybackBar onToast={showToast} />

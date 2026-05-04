@@ -19,9 +19,10 @@ import { emptyScenario, nextId } from '$lib/model/defaults';
 import { EXAMPLE_SCENARIO } from '$lib/model/example';
 import { getCartoucheParent } from '$lib/model/navigation';
 import { toJson } from '$lib/model/serialize';
-import { viewKey, type Node, type NodeId, type NodeType, type Scenario, type View } from '$lib/model/types';
+import { isCartouche, viewKey, type Node, type NodeId, type NodeType, type Scenario, type View } from '$lib/model/types';
 import { setLang } from '$lib/i18n/i18n.svelte';
 import { createNode } from '$lib/model/defaults';
+import { engine } from '$lib/audio/engine.svelte';
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
@@ -123,12 +124,18 @@ class ScenarioStore {
 
   /** Remplace le scénario courant. Réinitialise sélection et baseline. */
   loadScenario(scenario: Scenario, path: string | null = null): void {
+    // Avant de tout remplacer, on stoppe l'audio pour éviter qu'un fond
+    // d'un scénario précédent ne survive au chargement du nouveau.
+    engine.stopAll();
     this.scenario = scenario;
     this.selectedId = null;
     this.currentPath = path;
     this.baseSerialization = toJson(scenario);
     setLang(scenario.language);
     this.ensureCurrentViewExists();
+    // Restaure le bg du cartouche courant (si on a chargé un scénario
+    // dont currentCartoucheId pointe sur un cartouche avec bg).
+    this.syncCartoucheBg([], this.cartouchePath());
   }
 
   /** Charge le scénario d'exemple. */
@@ -178,9 +185,11 @@ class ScenarioStore {
    * plus visible (et donc plus éditable depuis l'inspecteur).
    */
   enterCartouche(cartoucheId: NodeId): void {
+    const oldPath = this.cartouchePath();
     this.scenario.currentCartoucheId = cartoucheId;
     this.selectedId = null;
     this.ensureCurrentViewExists();
+    this.syncCartoucheBg(oldPath, this.cartouchePath());
   }
 
   /**
@@ -189,10 +198,12 @@ class ScenarioStore {
    */
   exitCartouche(): void {
     if (this.scenario.currentCartoucheId === null) return;
+    const oldPath = this.cartouchePath();
     const parent = getCartoucheParent(this.scenario, this.scenario.currentCartoucheId);
     this.scenario.currentCartoucheId = parent;
     this.selectedId = null;
     this.ensureCurrentViewExists();
+    this.syncCartoucheBg(oldPath, this.cartouchePath());
   }
 
   /**
@@ -200,9 +211,72 @@ class ScenarioStore {
    * le fil d'Ariane pour aller à un niveau précis.
    */
   goToCartouche(cartoucheId: NodeId | null): void {
+    const oldPath = this.cartouchePath();
     this.scenario.currentCartoucheId = cartoucheId;
     this.selectedId = null;
     this.ensureCurrentViewExists();
+    this.syncCartoucheBg(oldPath, this.cartouchePath());
+  }
+
+  // ============================================================
+  // Helpers — chemin de cartouches + synchronisation des fonds (jalon 10)
+  // ============================================================
+
+  /**
+   * Liste des cartouches dans le chemin de la racine au cartouche
+   * courant. La racine elle-même (parentId === null) n'apparaît pas
+   * (elle n'a pas de bg). Sert au sync des bg sur la pile audio.
+   */
+  private cartouchePath(): NodeId[] {
+    const path: NodeId[] = [];
+    let cur: Node | undefined = this.scenario.nodes.find(
+      (n) => n.id === this.scenario.currentCartoucheId,
+    );
+    let safety = 1000;
+    while (cur && safety-- > 0) {
+      path.unshift(cur.id);
+      if (cur.parentId === null) break;
+      cur = this.scenario.nodes.find((n) => n.id === cur!.parentId);
+    }
+    return path;
+  }
+
+  /**
+   * Synchronise les fonds de cartouche dans la pile audio en fonction
+   * du changement de chemin. Pour chaque cartouche du nouveau chemin
+   * qui n'était pas dans l'ancien, on push son bg ; pour chaque
+   * cartouche de l'ancien chemin absent du nouveau, on pop son bg.
+   *
+   * Tolère le cas où un cartouche n'a pas de bg (rien à faire).
+   * Échoue silencieusement si l'autoplay policy bloque le premier push
+   * (avant la première interaction utilisateur).
+   */
+  private syncCartoucheBg(oldPath: NodeId[], newPath: NodeId[]): void {
+    const newSet = new Set(newPath);
+    const oldSet = new Set(oldPath);
+
+    // Retire d'abord les bg des cartouches qu'on quitte (deepest first).
+    for (let i = oldPath.length - 1; i >= 0; i--) {
+      const id = oldPath[i];
+      if (newSet.has(id)) continue;
+      const cartouche = this.scenario.nodes.find((n) => n.id === id);
+      if (cartouche && isCartouche(cartouche) && cartouche.bgLocalFilePath) {
+        engine.popLayerByNodeId(id);
+      }
+    }
+
+    // Empile les bg des cartouches qu'on rejoint (shallowest first).
+    for (const id of newPath) {
+      if (oldSet.has(id)) continue;
+      const cartouche = this.scenario.nodes.find((n) => n.id === id);
+      if (cartouche && isCartouche(cartouche) && cartouche.bgLocalFilePath) {
+        engine.pushCartoucheBg(cartouche).catch(() => {
+          // Échec silencieux : autoplay policy ou fichier introuvable.
+          // Le toast d'erreur reste optionnel ici pour ne pas perturber
+          // la navigation. L'utilisateur peut tester via Inspecteur.
+        });
+      }
+    }
   }
 
   // ============================================================

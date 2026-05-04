@@ -17,6 +17,38 @@
   import { isCartouche, isAudioNode, type AudioNode, type CartoucheNode } from '$lib/model/types';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
+  import { engine } from '$lib/audio/engine.svelte';
+
+  interface Props {
+    onToast: (msg: string) => void;
+  }
+  let { onToast }: Props = $props();
+
+  function handleTest(node: AudioNode): void {
+    if (!node.localFilePath) {
+      onToast(t('toast.triggerNoFile', { title: node.title }));
+      return;
+    }
+    if (node.type === 'stinger') {
+      engine
+        .playStinger(node)
+        .then(() => onToast(t('toast.audioStinger', { title: node.title })))
+        .catch((e) =>
+          onToast(t('toast.audioError', { msg: e instanceof Error ? e.message : String(e) })),
+        );
+    } else {
+      engine
+        .pushLayer(node, node.type)
+        .then(() => onToast(t('toast.audioPushed', { title: node.title })))
+        .catch((e) =>
+          onToast(t('toast.audioError', { msg: e instanceof Error ? e.message : String(e) })),
+        );
+    }
+  }
+
+  function handleStopOne(node: AudioNode): void {
+    engine.popLayerByNodeId(node.id);
+  }
 
   // Type narrowing — selectedNode est NodeUnion, on récupère des
   // références fortement typées pour les blocs spécialisés.
@@ -79,6 +111,19 @@
       bind:value={node.notes}
       placeholder={t('inspector.fields.notesPlaceholder')}
     ></textarea>
+
+    <div class="audio-actions">
+      <button
+        class="btn primary"
+        type="button"
+        onclick={() => handleTest(node)}
+      >{t('inspector.actions.test')}</button>
+      <button
+        class="btn"
+        type="button"
+        onclick={() => handleStopOne(node)}
+      >{t('inspector.actions.stop')}</button>
+    </div>
 
     <p class="hint">{t('inspector.fileHint')}</p>
   {:else if cartoucheNode}
@@ -265,6 +310,16 @@
     width: 100%;
     margin-top: 14px;
     text-align: center;
+  }
+
+  /* Boutons Tester / Stop pour nœud audio */
+  .audio-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .audio-actions .btn {
+    flex: 1;
   }
 
   .hint {

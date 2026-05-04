@@ -24,7 +24,7 @@
  * soient réactifs (la PlaybackBar se met à jour en direct).
  */
 
-import type { AudioNode, NodeId } from '$lib/model/types';
+import type { AudioNode, CartoucheNode, NodeId } from '$lib/model/types';
 
 /** Durée par défaut des fondus push/pop (en secondes). Configurable jalon 16. */
 const DEFAULT_FADE = 1.0;
@@ -182,22 +182,21 @@ class AudioEngine {
   // ============================================================
 
   /**
-   * Empile un nœud audio (scène, personnage, ou futur cartoucheBg).
-   * Si le nœud est déjà dans la pile, l'instance précédente est
-   * retirée d'abord (= "remonter au sommet").
-   *
-   * Le sommet précédent est mis en sourdine (fade vers 0) ; la
-   * nouvelle couche démarre à 0 et fade vers 1.
+   * Cœur commun de pushLayer / pushCartoucheBg. Charge le buffer,
+   * déduplique, met en sourdine le sommet précédent, démarre la
+   * nouvelle couche en fade-in.
    */
-  async pushLayer(node: AudioNode, kind: AudioLayer['kind'] = node.type as AudioLayer['kind']): Promise<void> {
-    if (!node.localFilePath) {
-      throw new Error(`Aucun fichier local attaché à « ${node.title} »`);
-    }
+  private async _pushInternal(
+    id: NodeId,
+    path: string,
+    loop: boolean,
+    kind: AudioLayer['kind'],
+  ): Promise<void> {
     const ctx = await this.ensureContext();
-    const buffer = await this.loadBuffer(node.localFilePath);
+    const buffer = await this.loadBuffer(path);
 
-    // Déduplication : si le nœud est déjà dans la pile, retire l'ancienne instance.
-    const existingIdx = this.indexInStackByNodeId(node.id);
+    // Déduplication : si le nodeId est déjà dans la pile, retire-le.
+    const existingIdx = this.indexInStackByNodeId(id);
     if (existingIdx !== -1) {
       const old = this.stack[existingIdx];
       this.tearDown(old);
@@ -214,20 +213,47 @@ class AudioEngine {
     }
 
     // Démarre la nouvelle couche en fade-in.
-    const { source, gain } = this.createLayerNodes(ctx, buffer, !!node.loop, 0);
+    const { source, gain } = this.createLayerNodes(ctx, buffer, loop, 0);
     const now = ctx.currentTime;
     gain.gain.linearRampToValueAtTime(1, now + DEFAULT_FADE);
     source.start(now);
 
     const layer: AudioLayer = {
       id: crypto.randomUUID(),
-      nodeId: node.id,
+      nodeId: id,
       kind,
       source,
       gain,
       startedAt: performance.now(),
     };
     this.stack.push(layer);
+  }
+
+  /**
+   * Empile un nœud audio (scène, personnage). Le sommet précédent
+   * est mis en sourdine, la nouvelle couche démarre en fade-in.
+   * Si le nœud est déjà dans la pile, l'instance précédente est
+   * retirée d'abord (= "remonter au sommet").
+   */
+  async pushLayer(
+    node: AudioNode,
+    kind: AudioLayer['kind'] = node.type as AudioLayer['kind'],
+  ): Promise<void> {
+    if (!node.localFilePath) {
+      throw new Error(`Aucun fichier local attaché à « ${node.title} »`);
+    }
+    return this._pushInternal(node.id, node.localFilePath, !!node.loop, kind);
+  }
+
+  /**
+   * Empile la musique de fond d'un cartouche (jalon 10). Toujours en
+   * boucle. Utilise `bgLocalFilePath` comme source.
+   */
+  async pushCartoucheBg(node: CartoucheNode): Promise<void> {
+    if (!node.bgLocalFilePath) {
+      throw new Error(`Aucun fond local attaché à « ${node.title} »`);
+    }
+    return this._pushInternal(node.id, node.bgLocalFilePath, true, 'cartoucheBg');
   }
 
   /**
