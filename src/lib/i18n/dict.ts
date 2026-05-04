@@ -105,6 +105,11 @@ const fr = {
   'toast.nodeDeleted': 'Supprimé',
   'toast.nodesDeleted': '{n} éléments supprimés',
   'toast.nothingSelected': 'Aucun nœud sélectionné',
+  'toast.connectionCreated': 'Connexion créée',
+  'toast.connectionTransverse': 'Connexion transverse créée',
+  'toast.connectionDeleted': 'Connexion supprimée',
+  'toast.connectionExists': 'Cette connexion existe déjà',
+  'toast.connectionInvalid': 'Connexion impossible',
 
   // === Confirmations ===
   'confirm.discardChanges': 'Modifications non sauvegardées. Continuer ?',

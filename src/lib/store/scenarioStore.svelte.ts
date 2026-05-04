@@ -155,6 +155,32 @@ class ScenarioStore {
     }
   }
 
+  // ============================================================
+  // Actions — manipulation des connexions
+  // ============================================================
+
+  /**
+   * Tente de créer une connexion `from → to`. Renvoie le résultat :
+   * - 'created' si la connexion a été ajoutée
+   * - 'exists' si elle existait déjà
+   * - 'invalid' si la connexion est impossible (même nœud, ids inconnus)
+   */
+  addConnection(from: NodeId, to: NodeId): 'created' | 'exists' | 'invalid' {
+    if (from === to) return 'invalid';
+    const ids = new Set(this.scenario.nodes.map((n) => n.id));
+    if (!ids.has(from) || !ids.has(to)) return 'invalid';
+    const exists = this.scenario.connections.some((c) => c.from === from && c.to === to);
+    if (exists) return 'exists';
+    this.scenario.connections.push({ from, to });
+    return 'created';
+  }
+
+  /** Supprime la connexion à l'index donné. */
+  deleteConnectionByIndex(index: number): void {
+    if (index < 0 || index >= this.scenario.connections.length) return;
+    this.scenario.connections.splice(index, 1);
+  }
+
   /**
    * Supprime un nœud (et toute sa descendance s'il s'agit d'un
    * cartouche). Renvoie le nombre total de nœuds supprimés.

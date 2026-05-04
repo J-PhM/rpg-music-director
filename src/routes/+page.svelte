@@ -31,7 +31,7 @@
   <Toolbar onToast={showToast} />
 
   <div class="main">
-    <Canvas />
+    <Canvas onToast={showToast} />
     <Inspector />
   </div>
 
