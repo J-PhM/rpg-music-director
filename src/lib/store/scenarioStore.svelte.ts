@@ -231,6 +231,48 @@ class ScenarioStore {
   }
 
   /**
+   * Crée une scène avec un fichier audio déjà attaché. Le titre est
+   * dérivé du nom du fichier. Utilisé par le drag-drop sur canvas
+   * vide pour transformer un MP3 lâché en nœud directement utilisable.
+   */
+  createSceneFromFile(path: string, title: string, x: number, y: number): Node {
+    const node = this.addNode('scene', x, y);
+    if (node.type === 'scene') {
+      node.title = title;
+      node.localFilePath = path;
+      node.ytUrl = '';
+    }
+    return node;
+  }
+
+  /**
+   * Attache un fichier audio à un nœud audio existant (scène / personnage
+   * / tada). Écrase le précédent fichier ou URL YouTube. Renvoie true
+   * si l'attachement a réussi, false si la cible n'est pas un nœud audio.
+   */
+  attachAudioFile(nodeId: NodeId, path: string): boolean {
+    const node = this.scenario.nodes.find((n) => n.id === nodeId);
+    if (!node) return false;
+    if (node.type === 'cartouche') return false;
+    node.localFilePath = path;
+    node.ytUrl = '';
+    return true;
+  }
+
+  /**
+   * Attache un fichier audio à une cartouche en tant que musique de
+   * fond. Écrase le précédent fond. Renvoie true si OK, false si la
+   * cible n'est pas une cartouche.
+   */
+  attachCartoucheBg(cartoucheId: NodeId, path: string): boolean {
+    const node = this.scenario.nodes.find((n) => n.id === cartoucheId);
+    if (!node || node.type !== 'cartouche') return false;
+    node.bgLocalFilePath = path;
+    node.bgYtUrl = '';
+    return true;
+  }
+
+  /**
    * Met à jour les coordonnées d'un nœud. Utilisé pendant le drag.
    * Pas de validation ici — l'UI peut clamper si besoin.
    */

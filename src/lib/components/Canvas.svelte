@@ -30,6 +30,13 @@
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { isTauriContext } from '$lib/io/scenarioFile';
+  import {
+    isAudioFile,
+    subscribeToTauriDrop,
+    titleFromPath,
+    type DropEvent,
+    type Unsubscribe,
+  } from '$lib/io/dragDrop';
 
   interface Props {
     onToast: (msg: string) => void;
@@ -499,6 +506,119 @@
   let canvasAreaEl: HTMLDivElement;
 
   // ============================================================
+  // Drag-and-drop de fichiers (jalon 7)
+  // ============================================================
+
+  /** Id du nœud actuellement survolé pendant un drag de fichier (pour le highlight). */
+  let dropTargetId = $state<NodeId | null>(null);
+
+  /**
+   * Convertit une position fenêtre Tauri en coords monde du canvas.
+   * Renvoie null si la position est en dehors du canvas-area.
+   */
+  function tauriWindowToWorld(
+    pos: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    if (!canvasAreaEl) return null;
+    const rect = canvasAreaEl.getBoundingClientRect();
+    const cx = pos.x - rect.left;
+    const cy = pos.y - rect.top;
+    if (cx < 0 || cy < 0 || cx > rect.width || cy > rect.height) return null;
+    const v = store.currentView;
+    return { x: (cx - v.panX) / v.scale, y: (cy - v.panY) / v.scale };
+  }
+
+  function handleDropEvent(event: DropEvent): void {
+    if (event.type === 'leave') {
+      dropTargetId = null;
+      return;
+    }
+    if (event.type === 'enter' || event.type === 'over') {
+      const wp = tauriWindowToWorld(event.position);
+      if (!wp) {
+        dropTargetId = null;
+        return;
+      }
+      const hit = findNodeAt(wp.x, wp.y);
+      dropTargetId = hit ? hit.id : null;
+      return;
+    }
+    if (event.type === 'drop') {
+      const wp = tauriWindowToWorld(event.position);
+      dropTargetId = null;
+      if (!wp) return;
+
+      const audioPaths = event.paths.filter(isAudioFile);
+      if (audioPaths.length === 0) {
+        const first = event.paths[0];
+        if (first) {
+          onToast(t('toast.notAudioFile', { name: titleFromPath(first) }));
+        } else {
+          onToast(t('toast.noAudioFiles'));
+        }
+        return;
+      }
+
+      const hit = findNodeAt(wp.x, wp.y);
+
+      // Sur un nœud audio existant : remplacer la source
+      if (hit && hit.type !== 'cartouche') {
+        const path = audioPaths[0];
+        store.attachAudioFile(hit.id, path);
+        onToast(t('toast.fileAttached', { name: titleFromPath(path) }));
+        return;
+      }
+
+      // Sur une cartouche : devient le fond
+      if (hit && hit.type === 'cartouche') {
+        const path = audioPaths[0];
+        store.attachCartoucheBg(hit.id, path);
+        onToast(t('toast.bgAttached', { name: titleFromPath(path) }));
+        return;
+      }
+
+      // Canvas vide : créer une (ou plusieurs) scènes
+      const baseTitle = titleFromPath(audioPaths[0]);
+      let offset = 0;
+      for (const path of audioPaths) {
+        store.createSceneFromFile(
+          path,
+          titleFromPath(path),
+          wp.x - 80 + offset,
+          wp.y - 35 + offset,
+        );
+        offset += 30;
+      }
+      onToast(
+        audioPaths.length === 1
+          ? t('toast.sceneCreatedFromFile', { name: baseTitle })
+          : t('toast.scenesCreated', { n: audioPaths.length }),
+      );
+    }
+  }
+
+  let dropUnsubscribe: Unsubscribe | null = null;
+  $effect(() => {
+    // Abonnement au mount, désabonnement au démontage. Le wrapper
+    // gère silencieusement le cas hors-Tauri (preview navigateur).
+    let cancelled = false;
+    subscribeToTauriDrop(handleDropEvent).then((unlisten) => {
+      if (cancelled) {
+        unlisten();
+      } else {
+        dropUnsubscribe = unlisten;
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (dropUnsubscribe) {
+        dropUnsubscribe();
+        dropUnsubscribe = null;
+      }
+    };
+  });
+
+  // ============================================================
   // Image de fond (jalon 4.5)
   // ============================================================
 
@@ -617,6 +737,7 @@
           class="node {node.type}"
           class:selected={isSelected}
           class:dragging={nodeDragId === node.id}
+          class:drop-target={dropTargetId === node.id}
           transform="translate({node.x},{node.y})"
           aria-label={node.title}
         >
@@ -757,6 +878,13 @@
   .node.selected .node-bg {
     stroke: var(--highlight);
     stroke-width: 2;
+  }
+
+  /* Cible de drop pendant un drag de fichier (jalon 7) */
+  .node.drop-target .node-bg {
+    stroke: var(--transverse);
+    stroke-width: 2;
+    stroke-dasharray: 4 3;
   }
 
   .node.scene .node-bg {

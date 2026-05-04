@@ -136,6 +136,12 @@ const fr = {
   'toast.connectionDeleted': 'Connexion supprimée',
   'toast.connectionExists': 'Cette connexion existe déjà',
   'toast.connectionInvalid': 'Connexion impossible',
+  'toast.fileAttached': 'Fichier attaché : {name}',
+  'toast.bgAttached': 'Fond du cartouche : {name}',
+  'toast.sceneCreatedFromFile': 'Scène créée : {name}',
+  'toast.scenesCreated': '{n} scènes créées',
+  'toast.notAudioFile': 'Format audio non reconnu : {name}',
+  'toast.noAudioFiles': 'Aucun fichier audio dans le glissé',
 
   // === Confirmations ===
   'confirm.discardChanges': 'Modifications non sauvegardées. Continuer ?',
