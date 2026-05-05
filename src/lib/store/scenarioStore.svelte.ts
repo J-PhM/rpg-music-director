@@ -43,6 +43,13 @@ class ScenarioStore {
   currentPath = $state<string | null>(null);
 
   /**
+   * Timestamp de la dernière sauvegarde réussie (ms epoch). Utilisé
+   * par la toolbar pour afficher "✓ Enregistré" pendant 1.5 s.
+   * Réinitialisé à `null` au load (la baseline est par définition propre).
+   */
+  lastSavedAt = $state<number | null>(null);
+
+  /**
    * Mode courant de l'application. État éphémère (pas dans le scénario) :
    * - 'edit' : préparation, édition libre, ports visibles, drag actif.
    * - 'play' : pendant la partie, interface dépouillée, clic = trigger audio.
@@ -141,6 +148,7 @@ class ScenarioStore {
     this.selectedId = null;
     this.currentPath = path;
     this.baseSerialization = toJson(scenario);
+    this.lastSavedAt = null;
     setLang(scenario.language);
     // Applique le thème graphique du scénario (jalon 14).
     applyPreset(scenario.theme.preset, scenario.theme.mode);
@@ -167,11 +175,13 @@ class ScenarioStore {
 
   /**
    * Marque le scénario comme « propre » au chemin donné. À appeler
-   * après un succès de sauvegarde.
+   * après un succès de sauvegarde. Met aussi à jour `lastSavedAt`
+   * pour permettre l'affichage du flash "✓ Enregistré" en toolbar.
    */
   markSaved(path: string): void {
     this.currentPath = path;
     this.baseSerialization = toJson(this.scenario);
+    this.lastSavedAt = Date.now();
   }
 
   // ============================================================

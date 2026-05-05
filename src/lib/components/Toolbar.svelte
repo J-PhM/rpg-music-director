@@ -1,11 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/i18n.svelte';
-  import {
-    isTauriContext,
-    openScenario,
-    saveScenarioAs,
-    saveScenarioToPath,
-  } from '$lib/io/scenarioFile';
+  import { isTauriContext } from '$lib/io/scenarioFile';
+  import { appLoadExample, appNew, appOpen, appSave, appSaveAs } from '$lib/io/actions';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { history } from '$lib/history/history.svelte';
   import type { NodeType } from '$lib/model/types';
@@ -26,66 +22,39 @@
   });
 
   // ============================================================
-  // Actions fichiers
+  // Actions fichiers — délégation au module `io/actions.ts`
+  // (réutilisé par les raccourcis clavier dans +page.svelte)
   // ============================================================
 
   function handleNew(): void {
-    if (store.modified && !confirm(t('confirm.discardChanges'))) return;
-    store.newScenario();
-    onToast(t('toast.newScenario'));
+    appNew(onToast);
   }
-
   function handleLoadExample(): void {
-    if (store.modified && !confirm(t('confirm.discardChanges'))) return;
-    store.loadExample();
-    onToast(t('toast.exampleLoaded'));
+    appLoadExample(onToast);
+  }
+  function handleOpen(): void {
+    void appOpen(onToast);
+  }
+  function handleSave(): void {
+    void appSave(onToast);
+  }
+  function handleSaveAs(): void {
+    void appSaveAs(onToast);
   }
 
-  async function handleOpen(): Promise<void> {
-    try {
-      const result = await openScenario();
-      if (!result) return;
-      store.loadScenario(result.scenario, result.path);
-
-      const warnSuffix = result.warnings.length
-        ? result.warnings.length === 1
-          ? ' ' + t('toast.warningSuffix.one')
-          : ' ' + t('toast.warningSuffix.many', { n: result.warnings.length })
-        : '';
-      onToast((result.migrated ? t('toast.openedMigrated') : t('toast.opened')) + warnSuffix);
-
-      if (result.warnings.length) {
-        for (const w of result.warnings) console.warn('[scenario]', w);
-      }
-    } catch (e) {
-      onToast(t('toast.error', { msg: e instanceof Error ? e.message : String(e) }));
-    }
-  }
-
-  async function handleSave(): Promise<void> {
-    if (!store.currentPath) {
-      await handleSaveAs();
-      return;
-    }
-    try {
-      await saveScenarioToPath(store.scenario, store.currentPath);
-      store.markSaved(store.currentPath);
-      onToast(t('toast.saved'));
-    } catch (e) {
-      onToast(t('toast.error', { msg: e instanceof Error ? e.message : String(e) }));
-    }
-  }
-
-  async function handleSaveAs(): Promise<void> {
-    try {
-      const path = await saveScenarioAs(store.scenario);
-      if (!path) return;
-      store.markSaved(path);
-      onToast(t('toast.saved'));
-    } catch (e) {
-      onToast(t('toast.error', { msg: e instanceof Error ? e.message : String(e) }));
-    }
-  }
+  // ============================================================
+  // Indicateur "✓ Enregistré" : flash 1.5 s après chaque save.
+  // S'efface dès la première modification suivante.
+  // ============================================================
+  let showSavedFlash = $state(false);
+  $effect(() => {
+    if (store.lastSavedAt === null) return;
+    showSavedFlash = true;
+    const tid = setTimeout(() => {
+      showSavedFlash = false;
+    }, 1500);
+    return () => clearTimeout(tid);
+  });
 
   // ============================================================
   // Actions nœuds
@@ -278,6 +247,8 @@
     >⚙</button>
     {#if store.modified}
       <span class="modified" title={t('state.modifiedTooltip')}>●&nbsp;{t('state.modified')}</span>
+    {:else if showSavedFlash}
+      <span class="saved" title={t('state.savedTooltip')}>✓&nbsp;{t('state.saved')}</span>
     {/if}
   </div>
 </header>
@@ -346,6 +317,29 @@
     color: var(--warm);
     padding-left: 8px;
     flex-shrink: 0;
+  }
+
+  .saved {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--playing);
+    padding-left: 8px;
+    flex-shrink: 0;
+    /* Apparition douce du flash, le retrait est immédiat (le composant se démonte). */
+    animation: saved-in 200ms var(--ease) both;
+  }
+
+  @keyframes saved-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   /* Bouton Gomme actif : couleur terre cuite appuyée (cf. cahier) */

@@ -18,6 +18,13 @@
   import Toolbar from '$lib/components/Toolbar.svelte';
   import { history } from '$lib/history/history.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
+  import { appAutoSave, appNew, appOpen, appSave, appSaveAs } from '$lib/io/actions';
+  import { isTauriContext } from '$lib/io/scenarioFile';
+  import { store } from '$lib/store/scenarioStore.svelte';
+  import { toJson } from '$lib/model/serialize';
+
+  /** Délai après la dernière modification avant la sauvegarde auto. */
+  const AUTO_SAVE_DEBOUNCE_MS = 2000;
 
   // Toast partagé : Toolbar/Canvas/Settings émettent, la page affiche.
   let toastMsg = $state<string>('');
@@ -57,18 +64,105 @@
   }
 
   function handleKeyDown(e: KeyboardEvent): void {
-    if (isInTextInput(e.target)) return;
     const ctrl = e.ctrlKey || e.metaKey; // Cmd sur macOS
     if (!ctrl) return;
     const key = e.key.toLowerCase();
+
+    // Undo / Redo : ignorés si le focus est dans un champ texte
+    // (pour ne pas écraser l'undo natif du navigateur sur la frappe).
     if (key === 'z' && !e.shiftKey) {
+      if (isInTextInput(e.target)) return;
       e.preventDefault();
       if (history.undo()) showToast(t('toast.undone'));
-    } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+      return;
+    }
+    if ((key === 'z' && e.shiftKey) || key === 'y') {
+      if (isInTextInput(e.target)) return;
       e.preventDefault();
       if (history.redo()) showToast(t('toast.redone'));
+      return;
+    }
+
+    // Raccourcis fichier (jalon 18). On les laisse passer même depuis
+    // un champ texte — Ctrl+S dans une textarea n'a pas d'action native
+    // utile (le navigateur essaierait de sauvegarder la page entière),
+    // donc autant faire la sauvegarde de l'app.
+    if (key === 'n') {
+      e.preventDefault();
+      appNew(showToast);
+      return;
+    }
+    if (key === 'o') {
+      e.preventDefault();
+      void appOpen(showToast);
+      return;
+    }
+    if (key === 's') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        void appSaveAs(showToast);
+      } else {
+        void appSave(showToast);
+      }
+      return;
     }
   }
+
+  // ============================================================
+  // Sauvegarde auto débouncée (jalon 18)
+  // ============================================================
+  // Dès que le scénario est marqué `modified` ET qu'il a un chemin
+  // courant (i.e. l'utilisateur a déjà fait Save As au moins une fois),
+  // on déclenche un timer de 2 s. Toute nouvelle modification réinitialise
+  // le timer. Si rien ne bouge pendant 2 s, on sauvegarde silencieusement.
+  // Hors Tauri (preview navigateur), no-op : pas d'accès filesystem.
+  $effect(() => {
+    if (!isTauriContext()) return;
+    if (!store.modified || !store.currentPath) return;
+    // Lecture explicite du contenu sérialisé pour faire dépendre cet
+    // effet de chaque mutation profonde du scénario. Sans ça, l'effet
+    // ne re-run pas après la première modification (modified reste true).
+    void toJson(store.scenario);
+
+    const tid = setTimeout(() => {
+      void appAutoSave(showToast);
+    }, AUTO_SAVE_DEBOUNCE_MS);
+
+    return () => clearTimeout(tid);
+  });
+
+  // ============================================================
+  // Confirmation à la fermeture si modifications non sauvegardées
+  // (jalon 18). Plugin dialog Tauri non requis : on utilise window.confirm,
+  // que le webview Tauri sait afficher.
+  // ============================================================
+  $effect(() => {
+    if (!isTauriContext()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        unlisten = await win.onCloseRequested(async (event) => {
+          if (!store.modified) return;
+          const ok = window.confirm(t('confirm.quitUnsaved'));
+          if (!ok) {
+            event.preventDefault();
+          }
+        });
+        if (cancelled && unlisten) unlisten();
+      } catch (e) {
+        console.warn('[close-handler]', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  });
 </script>
 
 <svelte:window onkeydown={handleKeyDown} />

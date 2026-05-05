@@ -123,6 +123,8 @@ const fr = {
   // === Indicateurs d'état ===
   'state.modified': 'Modifié',
   'state.modifiedTooltip': 'Modifications non sauvegardées',
+  'state.saved': 'Enregistré',
+  'state.savedTooltip': 'Sauvegardé sur disque',
 
   // === Types de nœuds ===
   'node.type.scene': 'Scène',
@@ -197,6 +199,8 @@ const fr = {
   'toast.opened': 'Ouvert',
   'toast.openedMigrated': 'Ouvert · format migré',
   'toast.saved': 'Enregistré',
+  'toast.autoSaved': '✓ Sauvegardé automatiquement',
+  'toast.autoSaveFailed': 'Échec de la sauvegarde automatique',
   'toast.warningSuffix.one': '· 1 avertissement',
   'toast.warningSuffix.many': '· {n} avertissements',
   'toast.error': 'Erreur : {msg}',
@@ -237,6 +241,8 @@ const fr = {
 
   // === Confirmations ===
   'confirm.discardChanges': 'Modifications non sauvegardées. Continuer ?',
+  'confirm.quitUnsaved':
+    'Tu as des modifications non sauvegardées. Quitter quand même ? (Annuler revient à la fenêtre, tu pourras enregistrer avant.)',
   'confirm.deleteCartoucheWithChildren':
     'Supprimer le cartouche « {title} » et ses {n} élément(s) ?',
 } as const;
@@ -361,6 +367,8 @@ const en: Partial<Record<DictKey, string>> = {
   // === State indicators ===
   'state.modified': 'Modified',
   'state.modifiedTooltip': 'Unsaved changes',
+  'state.saved': 'Saved',
+  'state.savedTooltip': 'Saved to disk',
 
   // === Node types ===
   'node.type.scene': 'Scene',
@@ -436,6 +444,8 @@ const en: Partial<Record<DictKey, string>> = {
   'toast.opened': 'Opened',
   'toast.openedMigrated': 'Opened · format migrated',
   'toast.saved': 'Saved',
+  'toast.autoSaved': '✓ Auto-saved',
+  'toast.autoSaveFailed': 'Auto-save failed',
   'toast.warningSuffix.one': '· 1 warning',
   'toast.warningSuffix.many': '· {n} warnings',
   'toast.error': 'Error: {msg}',
@@ -476,6 +486,8 @@ const en: Partial<Record<DictKey, string>> = {
 
   // === Confirmations ===
   'confirm.discardChanges': 'Unsaved changes. Continue?',
+  'confirm.quitUnsaved':
+    'You have unsaved changes. Quit anyway? (Cancel to return to the window — you can save first.)',
   'confirm.deleteCartoucheWithChildren':
     'Delete group "{title}" and its {n} item(s)?',
 };
