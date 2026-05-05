@@ -8,6 +8,7 @@
 
 import {
   DEFAULT_APPEARANCE,
+  DEFAULT_THEME,
   type CartoucheNode,
   type CharacterNode,
   type Node,
@@ -102,7 +103,7 @@ export function emptyScenario(campaignTitle = 'Nouvelle campagne'): Scenario {
   return {
     campaignTitle,
     language: 'fr',
-    theme: 'light',
+    theme: { ...DEFAULT_THEME },
     appearance: { ...DEFAULT_APPEARANCE },
     nodes: [],
     connections: [],

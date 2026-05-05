@@ -19,6 +19,7 @@
   import { store } from '$lib/store/scenarioStore.svelte';
   import { history } from '$lib/history/history.svelte';
   import type { Language } from '$lib/model/types';
+  import { PRESET_IDS, presetHasBothModes, resolvePalette, type PresetId, type ThemeMode } from '$lib/themes/presets';
 
   interface Props {
     open: boolean;
@@ -77,6 +78,24 @@
     const v = (e.target as HTMLSelectElement).value as Language;
     store.setScenarioLanguage(v);
   }
+
+  function handlePresetChange(preset: PresetId): void {
+    history.snapshot('Thème');
+    // Si le preset choisi est nativement sombre et qu'on était en clair,
+    // on bascule en sombre (la fonction store.setTheme + applyPreset
+    // gèrent déjà le repli en interne, mais on force ici pour que la
+    // donnée du scénario reflète l'effectif).
+    const wantedMode = presetHasBothModes(preset) ? store.scenario.theme.mode : 'dark';
+    store.setTheme(preset, wantedMode);
+  }
+
+  function handleModeChange(mode: ThemeMode): void {
+    history.snapshot('Variante de thème');
+    store.setTheme(store.scenario.theme.preset, mode);
+  }
+
+  /** True si le preset courant supporte clair + sombre. */
+  const bothModes = $derived(presetHasBothModes(store.scenario.theme.preset));
 
   /** Libellé affiché pour l'image courante. */
   const imageLabel = $derived.by((): string => {
@@ -151,6 +170,68 @@
           oninput={handleOpacityInput}
         />
         <p class="hint">{t('settings.bg.hint')}</p>
+      </section>
+
+      <section class="section">
+        <h3 class="kicker section-title">{t('settings.section.theme')}</h3>
+
+        <span class="label">{t('settings.theme.preset')}</span>
+        <div class="preset-grid" role="radiogroup">
+          {#each PRESET_IDS as pid (pid)}
+            {@const isActive = store.scenario.theme.preset === pid}
+            {@const lightP = resolvePalette(pid, 'light')}
+            {@const darkP = resolvePalette(pid, 'dark')}
+            {@const previewP = presetHasBothModes(pid) && store.scenario.theme.mode === 'light'
+              ? lightP
+              : darkP}
+            <button
+              class="preset-card"
+              class:active={isActive}
+              type="button"
+              role="radio"
+              aria-checked={isActive}
+              onclick={() => handlePresetChange(pid)}
+              title={t(`theme.${pid}.tagline` as const)}
+            >
+              <span
+                class="preset-swatch"
+                style:background={previewP.paper}
+                style:border-color={previewP.rule}
+              >
+                <span class="dot" style:background={previewP.primary}></span>
+                <span class="dot" style:background={previewP.highlight}></span>
+                <span class="dot" style:background={previewP.playing}></span>
+              </span>
+              <span class="preset-label">{t(`theme.${pid}.label` as const)}</span>
+              <span class="preset-tagline">{t(`theme.${pid}.tagline` as const)}</span>
+            </button>
+          {/each}
+        </div>
+
+        <span class="label">{t('settings.theme.mode')}</span>
+        <div class="mode-buttons" role="radiogroup">
+          <button
+            class="btn"
+            type="button"
+            role="radio"
+            aria-checked={store.scenario.theme.mode === 'light'}
+            class:primary={store.scenario.theme.mode === 'light'}
+            onclick={() => handleModeChange('light')}
+            disabled={!bothModes}
+          >☀ {t('settings.theme.mode.light')}</button>
+          <button
+            class="btn"
+            type="button"
+            role="radio"
+            aria-checked={store.scenario.theme.mode === 'dark'}
+            class:primary={store.scenario.theme.mode === 'dark'}
+            onclick={() => handleModeChange('dark')}
+          >☾ {t('settings.theme.mode.dark')}</button>
+        </div>
+        {#if !bothModes}
+          <p class="hint dark-only-hint">{t('settings.theme.modeDarkOnly')}</p>
+        {/if}
+        <p class="hint">{t('settings.theme.hint')}</p>
       </section>
 
       <section class="section">
@@ -276,6 +357,80 @@
     color: var(--ink-soft);
     font-style: italic;
     line-height: 1.5;
+  }
+  .dark-only-hint {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+
+  /* Sélecteur de preset (jalon 14) */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .preset-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+    font-family: inherit;
+  }
+  .preset-card:hover {
+    border-color: var(--accent);
+    background: var(--paper-deep);
+  }
+  .preset-card.active {
+    border-color: var(--primary);
+    border-width: 2px;
+    padding: 9px 11px; /* compense le bord épaissi */
+  }
+  .preset-swatch {
+    width: 100%;
+    height: 28px;
+    border-radius: 2px;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 0 6px;
+  }
+  .preset-swatch .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .preset-label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .preset-tagline {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+  }
+
+  .mode-buttons {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .mode-buttons .btn {
+    flex: 1;
   }
 
   @keyframes backdrop-in {

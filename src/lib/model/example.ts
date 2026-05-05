@@ -12,7 +12,7 @@ import type { Scenario } from './types';
 export const EXAMPLE_SCENARIO: Scenario = {
   campaignTitle: 'Les Masques de Nyarlathotep',
   language: 'fr',
-  theme: 'light',
+  theme: { preset: 'lemniscate', mode: 'light' },
   appearance: {
     backgroundImagePath: null, // = fossile par défaut
     backgroundOpacity: 12,

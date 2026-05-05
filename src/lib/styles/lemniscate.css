@@ -1,14 +1,12 @@
 /* ============================================================
    Charte Lemniscate — RPG Music Director
    ============================================================
-   Adaptation de la charte du site lemniscate.pub pour les
-   besoins sémantiques d'une application audio.
-   Mode clair uniquement pour le jalon 1 ; mode sombre arrive
-   au jalon 14.
+   Variables CSS de base (Lemniscate clair). Servent de fallback
+   au premier paint avant que `applyPreset` (jalon 14) ne surcharge
+   chaque variable en JS via setProperty selon le preset chargé.
    ============================================================ */
 
-:root,
-html[data-theme='light'] {
+:root {
   /* === Vélin === */
   --paper: #faf6ee; /* fond principal */
   --paper-soft: #f3ecdc; /* fond panneaux secondaires */

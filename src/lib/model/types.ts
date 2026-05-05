@@ -115,7 +115,27 @@ export function viewKey(cartoucheId: NodeId | null): ViewKey {
 // ============================================================
 
 export type Language = 'fr' | 'en';
-export type Theme = 'light' | 'dark';
+
+/**
+ * Configuration de thème graphique d'un scénario (jalon 14).
+ * Au jalon 1 c'était simplement `'light' | 'dark'`. Désormais
+ * structurée en `{ preset, mode }` pour supporter plusieurs presets
+ * de palette (Lemniscate, Parchemin, Noir, Spectre, Datapad).
+ *
+ * Le clair/sombre est une variation INTERNE à chaque preset.
+ * Certains presets (Spectre, Datapad) sont nativement sombres et
+ * n'ont pas de variante claire — `mode='light'` est alors restauré
+ * en `dark` au moment de l'application.
+ */
+export type PresetId = 'lemniscate' | 'parchemin' | 'noir' | 'spectre' | 'datapad';
+export type ThemeMode = 'light' | 'dark';
+export interface Theme {
+  preset: PresetId;
+  mode: ThemeMode;
+}
+
+/** Thème par défaut pour les nouveaux scénarios. */
+export const DEFAULT_THEME: Theme = { preset: 'lemniscate', mode: 'light' };
 
 /**
  * Préférences d'apparence stockées par scénario. Permet à un MJ

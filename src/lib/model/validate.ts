@@ -9,7 +9,15 @@
  * L'UI affiche les avertissements sous forme de toasts au chargement.
  */
 
-import { DEFAULT_APPEARANCE, type Connection, type Node, type NodeId, type Scenario } from './types';
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_THEME,
+  type Connection,
+  type Node,
+  type NodeId,
+  type PresetId,
+  type Scenario,
+} from './types';
 
 export class ScenarioValidationError extends Error {
   constructor(message: string) {
@@ -20,7 +28,14 @@ export class ScenarioValidationError extends Error {
 
 const VALID_NODE_TYPES = new Set(['scene', 'character', 'stinger', 'cartouche']);
 const VALID_LANGS = new Set(['fr', 'en']);
-const VALID_THEMES = new Set(['light', 'dark']);
+const VALID_THEME_MODES = new Set(['light', 'dark']);
+const VALID_PRESET_IDS = new Set<PresetId>([
+  'lemniscate',
+  'parchemin',
+  'noir',
+  'spectre',
+  'datapad',
+]);
 const VALID_BG_MODES = new Set(['single', 'sequential']);
 
 export interface ValidationResult {
@@ -66,9 +81,29 @@ export function validateScenario(s: unknown): ValidationResult {
     warnings.push(`Langue invalide ou manquante (${scenario.language}), repli sur 'fr'.`);
     scenario.language = 'fr';
   }
-  if (typeof scenario.theme !== 'string' || !VALID_THEMES.has(scenario.theme)) {
-    warnings.push(`Thème invalide ou manquant (${scenario.theme}), repli sur 'light'.`);
-    scenario.theme = 'light';
+  // Migration thème : ancien format était une string 'light'|'dark'.
+  // Nouveau format : { preset: PresetId, mode: 'light'|'dark' }.
+  if (typeof scenario.theme === 'string') {
+    const oldMode = scenario.theme;
+    if (VALID_THEME_MODES.has(oldMode)) {
+      scenario.theme = { preset: 'lemniscate', mode: oldMode };
+      warnings.push(`Thème ancien format (${oldMode}) migré vers Lemniscate ${oldMode}.`);
+    } else {
+      scenario.theme = { ...DEFAULT_THEME };
+      warnings.push(`Thème invalide (${oldMode}), repli sur défaut.`);
+    }
+  } else if (!scenario.theme || typeof scenario.theme !== 'object') {
+    scenario.theme = { ...DEFAULT_THEME };
+  } else {
+    const t = scenario.theme as Record<string, unknown>;
+    if (typeof t.preset !== 'string' || !VALID_PRESET_IDS.has(t.preset as PresetId)) {
+      warnings.push(`Preset de thème invalide (${t.preset}), repli sur 'lemniscate'.`);
+      t.preset = 'lemniscate';
+    }
+    if (typeof t.mode !== 'string' || !VALID_THEME_MODES.has(t.mode)) {
+      warnings.push(`Mode de thème invalide (${t.mode}), repli sur 'light'.`);
+      t.mode = 'light';
+    }
   }
 
   // appearance : ajouté à la v1 mais peut manquer (fichiers anciens

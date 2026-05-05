@@ -13,7 +13,13 @@
  *   - Pas de `bgPlaylistIds`/`bgPlaylistMode` → playlist vide, mode 'single'.
  */
 
-import { DEFAULT_APPEARANCE, SCENARIO_FILE_VERSION, type Scenario, type ScenarioFile } from './types';
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_THEME,
+  SCENARIO_FILE_VERSION,
+  type Scenario,
+  type ScenarioFile,
+} from './types';
 import { validateScenario, type ValidationResult } from './validate';
 
 // ============================================================
@@ -112,7 +118,7 @@ function migrateFromProtoV9(raw: Record<string, unknown>): Record<string, unknow
     version: SCENARIO_FILE_VERSION,
     campaignTitle: typeof raw.campaignTitle === 'string' ? raw.campaignTitle : 'Campagne',
     language: 'fr',
-    theme: 'light',
+    theme: { ...DEFAULT_THEME },
     appearance: { ...DEFAULT_APPEARANCE },
     currentCartoucheId: raw.currentCartoucheId !== undefined ? raw.currentCartoucheId : null,
     viewByCartouche:

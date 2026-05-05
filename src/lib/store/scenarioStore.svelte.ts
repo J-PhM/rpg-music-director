@@ -24,6 +24,8 @@ import { setLang } from '$lib/i18n/i18n.svelte';
 import { createNode } from '$lib/model/defaults';
 import { engine } from '$lib/audio/engine.svelte';
 import { history } from '$lib/history/history.svelte';
+import { applyPreset } from '$lib/themes/applyPreset';
+import type { PresetId, ThemeMode } from '$lib/themes/presets';
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
@@ -140,6 +142,8 @@ class ScenarioStore {
     this.currentPath = path;
     this.baseSerialization = toJson(scenario);
     setLang(scenario.language);
+    // Applique le thème graphique du scénario (jalon 14).
+    applyPreset(scenario.theme.preset, scenario.theme.mode);
     this.ensureCurrentViewExists();
     // L'historique d'annulation est purement en mémoire : un load
     // efface l'historique de la session précédente (cf. cahier).
@@ -474,6 +478,17 @@ class ScenarioStore {
   setScenarioLanguage(lang: 'fr' | 'en'): void {
     this.scenario.language = lang;
     setLang(lang);
+  }
+
+  /**
+   * Change le thème graphique du scénario (preset + mode) et applique
+   * immédiatement les nouvelles variables CSS au document.
+   * Cf. cahier "thèmes graphiques (jalon 14 étendu)" — un toggle
+   * clair/sombre est désormais une variation INTERNE à chaque preset.
+   */
+  setTheme(preset: PresetId, mode: ThemeMode): void {
+    this.scenario.theme = { preset, mode };
+    applyPreset(preset, mode);
   }
 
   // ============================================================
