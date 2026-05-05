@@ -43,6 +43,13 @@ interface AudioNodeBase extends BaseNode {
   localFilePath: string | null;
   /** URL YouTube alternative. Chaîne vide si pas d'URL. */
   ytUrl: string;
+  /**
+   * URL ou URI Spotify (jalon 19). Format accepté :
+   * `spotify:track:…` ou `https://open.spotify.com/track/…`.
+   * Chaîne vide si pas d'URL. Lecture nécessite un compte Premium
+   * et la connexion à Spotify dans Paramètres.
+   */
+  spotifyUrl: string;
 }
 
 export interface SceneNode extends AudioNodeBase {
@@ -65,6 +72,8 @@ export interface CartoucheNode extends BaseNode {
   bgLocalFilePath: string | null;
   /** Musique de fond du cartouche : URL YouTube alternative. */
   bgYtUrl: string;
+  /** Musique de fond du cartouche : URL/URI Spotify alternative (jalon 19). */
+  bgSpotifyUrl: string;
   /**
    * Playlist séquentielle pour la musique de fond. Liste de chemins absolus
    * et/ou d'URLs YouTube. Ignorée si `bgPlaylistMode === 'single'`.

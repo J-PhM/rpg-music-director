@@ -310,7 +310,10 @@ class ScenarioStore {
     const hasBg = (n: Node): boolean => {
       if (!isCartouche(n)) return false;
       if (n.bgPlaylistMode === 'sequential' && n.bgPlaylistIds.length > 0) return true;
-      return !!n.bgLocalFilePath;
+      if (n.bgLocalFilePath) return true;
+      if (n.bgYtUrl) return true;
+      if (n.bgSpotifyUrl) return true;
+      return false;
     };
 
     // Retire d'abord les bg des cartouches qu'on quitte (deepest first).

@@ -150,7 +150,19 @@
       type="text"
       bind:value={node.ytUrl}
       placeholder="https://www.youtube.com/watch?v=…"
-      disabled={!!node.localFilePath}
+      disabled={!!node.localFilePath || !!node.spotifyUrl}
+      onfocus={handleEditFocus}
+      onblur={handleEditBlur}
+    />
+
+    <label class="label" for="i-spotify">{t('inspector.fields.spotifyUrl')}</label>
+    <input
+      id="i-spotify"
+      class="field"
+      type="text"
+      bind:value={node.spotifyUrl}
+      placeholder="https://open.spotify.com/track/…"
+      disabled={!!node.localFilePath || !!node.ytUrl}
       onfocus={handleEditFocus}
       onblur={handleEditBlur}
     />
@@ -222,7 +234,19 @@
         type="text"
         bind:value={node.bgYtUrl}
         placeholder="https://www.youtube.com/watch?v=…"
-        disabled={!!node.bgLocalFilePath}
+        disabled={!!node.bgLocalFilePath || !!node.bgSpotifyUrl}
+        onfocus={handleEditFocus}
+        onblur={handleEditBlur}
+      />
+
+      <label class="label" for="i-bg-spotify">{t('inspector.fields.bgSpotifyUrl')}</label>
+      <input
+        id="i-bg-spotify"
+        class="field"
+        type="text"
+        bind:value={node.bgSpotifyUrl}
+        placeholder="https://open.spotify.com/track/…"
+        disabled={!!node.bgLocalFilePath || !!node.bgYtUrl}
         onfocus={handleEditFocus}
         onblur={handleEditBlur}
       />

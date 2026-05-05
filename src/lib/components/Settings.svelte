@@ -20,6 +20,14 @@
   import { history } from '$lib/history/history.svelte';
   import type { Language, TransitionType } from '$lib/model/types';
   import { PRESET_IDS, presetHasBothModes, resolvePalette, type PresetId, type ThemeMode } from '$lib/themes/presets';
+  import {
+    clearStoredAuth as clearSpotifyAuth,
+    getStoredAuth as getSpotifyAuth,
+    getStoredClientId as getSpotifyClientId,
+    loginSpotify,
+    setStoredClientId as setSpotifyClientId,
+    type SpotifyAuth,
+  } from '$lib/audio/spotify';
 
   /** Ordre d'affichage des modes de transition (du plus courant au plus rare). */
   const TRANSITION_TYPES: TransitionType[] = ['crossfade', 'fade', 'cut'];
@@ -122,6 +130,53 @@
     const v = store.scenario.transitions.durationSec;
     return Number.isInteger(v) ? v.toString() : v.toFixed(1);
   });
+
+  // === Spotify (jalon 19) ===
+  // L'auth est stockée en localStorage (clés `rpgmd:spotify:*`). On
+  // recharge à chaque ouverture de la modale pour refléter les changes
+  // depuis une autre fenêtre / un précédent login.
+  let spotifyClientId = $state(getSpotifyClientId());
+  let spotifyAuth = $state<SpotifyAuth | null>(getSpotifyAuth());
+  let spotifyConnecting = $state(false);
+  $effect(() => {
+    if (open) {
+      spotifyClientId = getSpotifyClientId();
+      spotifyAuth = getSpotifyAuth();
+    }
+  });
+
+  function handleSpotifyClientIdInput(e: Event): void {
+    const v = (e.target as HTMLInputElement).value.trim();
+    spotifyClientId = v;
+    setSpotifyClientId(v);
+  }
+
+  async function handleSpotifyConnect(): Promise<void> {
+    if (!isTauriContext()) {
+      onToast(t('toolbar.tooltip.tauriOnly'));
+      return;
+    }
+    if (!spotifyClientId) {
+      onToast(t('settings.spotify.toast.noClientId'));
+      return;
+    }
+    spotifyConnecting = true;
+    try {
+      const auth = await loginSpotify(spotifyClientId);
+      spotifyAuth = auth;
+      onToast(t('settings.spotify.toast.connected'));
+    } catch (e) {
+      onToast(t('toast.error', { msg: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      spotifyConnecting = false;
+    }
+  }
+
+  function handleSpotifyDisconnect(): void {
+    clearSpotifyAuth();
+    spotifyAuth = null;
+    onToast(t('settings.spotify.toast.disconnected'));
+  }
 
   /** True si le preset courant supporte clair + sombre. */
   const bothModes = $derived(presetHasBothModes(store.scenario.theme.preset));
@@ -330,6 +385,53 @@
           <option value="en">{t('settings.lang.en')}</option>
         </select>
         <p class="hint">{t('settings.lang.hint')}</p>
+      </section>
+
+      <section class="section">
+        <h3 class="kicker section-title">{t('settings.section.spotify')}</h3>
+
+        <label class="label" for="spotify-client-id">{t('settings.spotify.clientId')}</label>
+        <input
+          id="spotify-client-id"
+          class="field"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder={t('settings.spotify.clientIdPlaceholder')}
+          value={spotifyClientId}
+          oninput={handleSpotifyClientIdInput}
+        />
+        <p class="hint">{t('settings.spotify.clientIdHint')}</p>
+
+        <div class="spotify-status">
+          {#if spotifyAuth}
+            <span class="spotify-connected">
+              ●&nbsp;{t('settings.spotify.connected', { email: spotifyAuth.userEmail ?? '?' })}
+            </span>
+          {:else}
+            <span class="spotify-disconnected">{t('settings.spotify.disconnected')}</span>
+          {/if}
+        </div>
+        <div class="spotify-actions">
+          {#if spotifyAuth}
+            <button
+              class="btn"
+              type="button"
+              onclick={handleSpotifyDisconnect}
+            >{t('settings.spotify.disconnect')}</button>
+          {:else}
+            <button
+              class="btn primary"
+              type="button"
+              disabled={!inTauri || !spotifyClientId || spotifyConnecting}
+              onclick={handleSpotifyConnect}
+              title={inTauri ? '' : t('toolbar.tooltip.tauriOnly')}
+            >
+              {spotifyConnecting ? t('settings.spotify.connecting') : t('settings.spotify.connect')}
+            </button>
+          {/if}
+        </div>
+        <p class="hint">{t('settings.spotify.hint')}</p>
       </section>
     </div>
   </div>
@@ -593,6 +695,30 @@
     cursor: pointer;
     accent-color: var(--primary);
     margin: 0;
+  }
+
+  /* Section Spotify (jalon 19) */
+  .spotify-status {
+    margin-top: 14px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-style: italic;
+  }
+  .spotify-connected {
+    font-family: var(--font-mono);
+    color: var(--playing);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 10px;
+    font-style: normal;
+  }
+  .spotify-disconnected {
+    color: var(--ink-soft);
+  }
+  .spotify-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
   }
 
   @keyframes backdrop-in {

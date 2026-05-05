@@ -148,12 +148,14 @@ function migrateFromProtoV9(raw: Record<string, unknown>): Record<string, unknow
     if (node.type === 'cartouche') {
       migrated.bgLocalFilePath = null; // Blob URL non récupérable.
       migrated.bgYtUrl = typeof node.bgYtUrl === 'string' ? node.bgYtUrl : '';
+      migrated.bgSpotifyUrl = typeof node.bgSpotifyUrl === 'string' ? node.bgSpotifyUrl : '';
       migrated.bgPlaylistIds = Array.isArray(node.bgPlaylistIds) ? node.bgPlaylistIds : [];
       migrated.bgPlaylistMode = node.bgPlaylistMode === 'sequential' ? 'sequential' : 'single';
     } else {
       migrated.loop = typeof node.loop === 'boolean' ? node.loop : node.type !== 'stinger';
       migrated.localFilePath = null; // Blob URL non récupérable.
       migrated.ytUrl = typeof node.ytUrl === 'string' ? node.ytUrl : '';
+      migrated.spotifyUrl = typeof node.spotifyUrl === 'string' ? node.spotifyUrl : '';
     }
     return migrated;
   });

@@ -38,6 +38,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       notes: 'Première session : la traversée et l\'enquête au Bordeaux.',
       bgLocalFilePath: null,
       bgYtUrl: '',
+      bgSpotifyUrl: '',
       bgPlaylistIds: [],
       bgPlaylistMode: 'single',
     },
@@ -51,6 +52,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       notes: 'Deuxième session : descente dans les catacombes.',
       bgLocalFilePath: null,
       bgYtUrl: '',
+      bgSpotifyUrl: '',
       bgPlaylistIds: [],
       bgPlaylistMode: 'single',
     },
@@ -64,6 +66,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       notes: 'Thèmes utilisables dans toute la campagne.',
       bgLocalFilePath: null,
       bgYtUrl: '',
+      bgSpotifyUrl: '',
       bgPlaylistIds: [],
       bgPlaylistMode: 'single',
     },
@@ -80,6 +83,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: true,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
     {
       id: 5,
@@ -92,6 +96,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: true,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
     {
       id: 6,
@@ -104,6 +109,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: false,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
 
     // === Contenu de Partie 2 ===
@@ -118,6 +124,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: true,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
     {
       id: 8,
@@ -130,6 +137,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: true,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
 
     // === PNJ récurrents ===
@@ -144,6 +152,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: true,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
     {
       id: 10,
@@ -156,6 +165,7 @@ export const EXAMPLE_SCENARIO: Scenario = {
       loop: true,
       localFilePath: null,
       ytUrl: '',
+      spotifyUrl: '',
     },
   ],
   connections: [

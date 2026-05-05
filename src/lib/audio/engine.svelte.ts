@@ -39,6 +39,18 @@ import {
   type VolumeRamp,
   type YTPlayer,
 } from './youtube';
+import {
+  createSpotifyPlayer,
+  destroySpotifyPlayer,
+  getStoredClientId as getSpotifyClientId,
+  getValidAccessToken as getSpotifyToken,
+  parseSpotifyTrackId,
+  playSpotifyTrack,
+  rampSpotifyVolume,
+  trackUriFromId,
+  type SpotifyPlayer,
+  type SpotifyVolumeRamp,
+} from './spotify';
 
 /**
  * Durée par défaut du fade-out global (Tout arrêter doux). Conceptuellement
@@ -101,8 +113,28 @@ export interface YouTubeLayer extends BaseAudioLayer {
   currentRamp?: VolumeRamp;
 }
 
-/** Une couche active dans la pile ou le canal Tada (jalon 17 — multi-backend). */
-export type AudioLayer = WebAudioLayer | YouTubeLayer;
+/**
+ * Couche jouée via Spotify (Web Playback SDK, jalon 19). Le SDK ne
+ * permet **qu'un seul track simultané** par compte connecté. Le moteur
+ * limite donc à une seule couche `'spotify'` dans la pile à tout moment :
+ * tout push d'une nouvelle couche Spotify évince la précédente, même
+ * si elle était sous le sommet. La sourdine et les fades passent par
+ * `setVolume(0–1)` du SDK ; la boucle se fait via `playTrack` au
+ * `track_end`.
+ */
+export interface SpotifyLayer extends BaseAudioLayer {
+  backend: 'spotify';
+  /** Référence partagée vers le player SDK (un seul pour toute la session). */
+  player: SpotifyPlayer;
+  /** URI Spotify (`spotify:track:…`) pour pouvoir relancer en cas de loop. */
+  trackUri: string;
+  loop: boolean;
+  /** Animation de volume en cours (annulée avant chaque nouveau ramp). */
+  currentRamp?: SpotifyVolumeRamp;
+}
+
+/** Une couche active dans la pile ou le canal Tada (jalons 17 + 19 — multi-backend). */
+export type AudioLayer = WebAudioLayer | YouTubeLayer | SpotifyLayer;
 
 class AudioEngine {
   /**
@@ -148,6 +180,14 @@ class AudioEngine {
   private ctx: AudioContext | null = null;
   /** Buffers décodés indexés par chemin local. Évite re-décoder à chaque play. */
   private bufferCache = new Map<string, AudioBuffer>();
+
+  /**
+   * Player SDK Spotify partagé (jalon 19). Le SDK ne permet qu'un
+   * seul track par compte connecté à la fois, donc une seule instance
+   * suffit pour toute la session. Lazy-init au premier push Spotify ;
+   * détruit par `stopAll`.
+   */
+  private spotifyContext: SpotifyPlayer | null = null;
 
   /**
    * Garantit qu'un AudioContext est instancié et prêt. La création est
@@ -231,6 +271,8 @@ class AudioEngine {
    * Tear down propre d'une couche, indépendamment du backend.
    * - Web Audio : stop + disconnect des nœuds.
    * - YouTube  : annule la rampe de volume en cours et détruit le player.
+   * - Spotify  : annule la rampe et met en pause. Le player SDK reste
+   *              vivant (singleton partagé) — détruit seulement par stopAll.
    */
   private tearDown(layer: AudioLayer): void {
     if (layer.backend === 'webaudio') {
@@ -249,9 +291,13 @@ class AudioEngine {
       } catch {
         /* idem */
       }
-    } else {
+    } else if (layer.backend === 'youtube') {
       layer.currentRamp?.cancel();
       destroyYTPlayer(layer.player);
+    } else {
+      // Spotify : pause sans déconnecter le SDK (réutilisable).
+      layer.currentRamp?.cancel();
+      layer.player.player.pause().catch(() => {});
     }
   }
 
@@ -423,9 +469,115 @@ class AudioEngine {
   }
 
   /**
+   * Lazy-init du player Spotify partagé. La première création prend
+   * 1–2 s (chargement du SDK + connexion). Les pushs ultérieurs
+   * réutilisent l'instance.
+   */
+  private async _ensureSpotifyContext(clientId: string): Promise<SpotifyPlayer> {
+    if (this.spotifyContext) return this.spotifyContext;
+    this.spotifyContext = await createSpotifyPlayer(clientId, {
+      onTrackEnded: () => {
+        // Si une couche Spotify est encore active et marquée loop,
+        // on relance la même URI. Imparfait (gap réseau) — limite
+        // intrinsèque du SDK acceptée par le cahier.
+        const layer = this.stack.find((l) => l.backend === 'spotify');
+        if (!layer || layer.backend !== 'spotify' || !layer.loop) return;
+        const ctx = this.spotifyContext;
+        if (!ctx) return;
+        getSpotifyToken(clientId)
+          .then((token) => playSpotifyTrack(token, ctx.deviceId, layer.trackUri))
+          .catch((e) => console.warn('[spotify] loop replay failed', e));
+      },
+    });
+    return this.spotifyContext;
+  }
+
+  /**
+   * Push d'une couche Spotify (jalon 19). Limitation : une seule
+   * couche Spotify simultanée (le SDK n'accepte qu'un device par
+   * compte) — toute autre couche Spotify dans la pile est évincée.
+   *
+   * En transition `fade`, on ne peut pas retarder le démarrage du
+   * track côté API : on démarre immédiatement à volume 0, on attend
+   * `durMs`, puis on ramp 0→1. Compromis acceptable (perte d'audio
+   * pendant le silence intermédiaire).
+   */
+  private async _pushSpotify(
+    id: NodeId,
+    trackUri: string,
+    loop: boolean,
+    kind: AudioLayer['kind'],
+  ): Promise<void> {
+    const clientId = getSpotifyClientId();
+    if (!clientId) {
+      throw new Error('Client ID Spotify manquant — configure-le dans Paramètres');
+    }
+
+    // Évince toute autre couche Spotify (limitation 1 par device).
+    const otherSpotifyIdx = this.stack.findIndex(
+      (l) => l.backend === 'spotify' && l.nodeId !== id,
+    );
+    if (otherSpotifyIdx !== -1) {
+      this.tearDown(this.stack[otherSpotifyIdx]);
+      this.stack.splice(otherSpotifyIdx, 1);
+    }
+
+    // Déduplication par nodeId (= remonter au sommet).
+    const existingIdx = this.indexInStackByNodeId(id);
+    if (existingIdx !== -1) {
+      this.tearDown(this.stack[existingIdx]);
+      this.stack.splice(existingIdx, 1);
+    }
+
+    const player = await this._ensureSpotifyContext(clientId);
+    const token = await getSpotifyToken(clientId);
+
+    const tr = this.transitions;
+    const previousTop = this.stack[this.stack.length - 1];
+    if (previousTop) this._fadeOutSilence(previousTop, tr);
+
+    // Volume initial selon mode.
+    if (tr.type === 'cut') {
+      await player.player.setVolume(1).catch(() => {});
+    } else {
+      await player.player.setVolume(0).catch(() => {});
+    }
+
+    // Démarre la lecture côté API. Le track démarre immédiatement.
+    await playSpotifyTrack(token, player.deviceId, trackUri);
+
+    const durMs = tr.durationSec * 1000;
+    const layerId = crypto.randomUUID();
+    let initialRamp: SpotifyVolumeRamp | undefined;
+    if (tr.type === 'crossfade') {
+      initialRamp = rampSpotifyVolume(player.player, 0, 1, durMs);
+    } else if (tr.type === 'fade') {
+      setTimeout(() => {
+        const layer = this.stack.find((l) => l.id === layerId);
+        if (!layer || layer.backend !== 'spotify') return;
+        layer.currentRamp = rampSpotifyVolume(layer.player.player, 0, 1, durMs);
+      }, durMs);
+    }
+
+    const layer: SpotifyLayer = {
+      backend: 'spotify',
+      id: layerId,
+      nodeId: id,
+      kind,
+      player,
+      trackUri,
+      loop,
+      currentRamp: initialRamp,
+      startedAt: performance.now(),
+    };
+    this.stack.push(layer);
+  }
+
+  /**
    * Aiguille une couche vers le bon backend selon ce que la node
-   * fournit. Priorité au fichier local (latence + sample-perfect).
-   * Renvoie une erreur explicite si rien n'est attaché.
+   * fournit. Ordre de priorité : fichier local (latence +
+   * sample-perfect) → YouTube → Spotify. Renvoie une erreur
+   * explicite si rien n'est attaché.
    */
   async pushLayer(
     node: AudioNode,
@@ -438,10 +590,17 @@ class AudioEngine {
     if (ytId) {
       return this._pushYouTube(node.id, ytId, !!node.loop, kind);
     }
+    const spotifyId = parseSpotifyTrackId(node.spotifyUrl);
+    if (spotifyId) {
+      return this._pushSpotify(node.id, trackUriFromId(spotifyId), !!node.loop, kind);
+    }
     if (node.ytUrl) {
       throw new Error(`URL YouTube invalide pour « ${node.title} »`);
     }
-    throw new Error(`Aucun fichier ni URL YouTube attaché à « ${node.title} »`);
+    if (node.spotifyUrl) {
+      throw new Error(`URL Spotify invalide pour « ${node.title} »`);
+    }
+    throw new Error(`Aucune source attachée à « ${node.title} »`);
   }
 
   /**
@@ -470,8 +629,16 @@ class AudioEngine {
     if (ytId) {
       return this._pushYouTube(node.id, ytId, true, 'cartoucheBg');
     }
+    // Cas Spotify (jalon 19).
+    const spotifyId = parseSpotifyTrackId(node.bgSpotifyUrl);
+    if (spotifyId) {
+      return this._pushSpotify(node.id, trackUriFromId(spotifyId), true, 'cartoucheBg');
+    }
     if (node.bgYtUrl) {
       throw new Error(`URL YouTube de fond invalide pour « ${node.title} »`);
+    }
+    if (node.bgSpotifyUrl) {
+      throw new Error(`URL Spotify de fond invalide pour « ${node.title} »`);
     }
     throw new Error(`Aucun fond attaché à « ${node.title} »`);
   }
@@ -482,9 +649,9 @@ class AudioEngine {
    * sourdine le sommet précédent au push, et pour le pop d'une couche.
    */
   private _fadeOutSilence(layer: AudioLayer, tr: Transitions): void {
-    if (!this.ctx) return;
-    const now = this.ctx.currentTime;
     if (layer.backend === 'webaudio') {
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
       layer.gain.gain.cancelScheduledValues(now);
       layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
       if (tr.type === 'cut') {
@@ -492,7 +659,7 @@ class AudioEngine {
       } else {
         layer.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
       }
-    } else {
+    } else if (layer.backend === 'youtube') {
       layer.currentRamp?.cancel();
       const fromVol = (() => {
         try {
@@ -510,6 +677,16 @@ class AudioEngine {
       } else {
         layer.currentRamp = rampYTVolume(layer.player, fromVol, 0, tr.durationSec * 1000);
       }
+    } else {
+      // Spotify : volume 0–1.
+      layer.currentRamp?.cancel();
+      if (tr.type === 'cut') {
+        layer.player.player.setVolume(0).catch(() => {});
+      } else {
+        // Le SDK n'expose pas getVolume sync — on suppose 1 (volume plein
+        // est le défaut). Imprécis mais sans impact audible.
+        layer.currentRamp = rampSpotifyVolume(layer.player.player, 1, 0, tr.durationSec * 1000);
+      }
     }
   }
 
@@ -521,9 +698,9 @@ class AudioEngine {
    * - fade      : reste à 0 pendant le fade-out, puis 0→1 séquentiel
    */
   private _fadeInResume(layer: AudioLayer, tr: Transitions): void {
-    if (!this.ctx) return;
-    const now = this.ctx.currentTime;
     if (layer.backend === 'webaudio') {
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
       layer.gain.gain.cancelScheduledValues(now);
       layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
       if (tr.type === 'cut') {
@@ -534,7 +711,7 @@ class AudioEngine {
       } else {
         layer.gain.gain.linearRampToValueAtTime(1, now + tr.durationSec);
       }
-    } else {
+    } else if (layer.backend === 'youtube') {
       layer.currentRamp?.cancel();
       const durMs = tr.durationSec * 1000;
       if (tr.type === 'cut') {
@@ -544,7 +721,6 @@ class AudioEngine {
           /* ignore */
         }
       } else if (tr.type === 'fade') {
-        // Reste à 0 pendant la durMs, puis ramp 0→100 pendant durMs.
         setTimeout(() => {
           const stillThere = this.stack.includes(layer);
           if (!stillThere) return;
@@ -559,6 +735,21 @@ class AudioEngine {
           }
         })();
         layer.currentRamp = rampYTVolume(layer.player, fromVol, 100, durMs);
+      }
+    } else {
+      // Spotify : échelle 0–1.
+      layer.currentRamp?.cancel();
+      const durMs = tr.durationSec * 1000;
+      if (tr.type === 'cut') {
+        layer.player.player.setVolume(1).catch(() => {});
+      } else if (tr.type === 'fade') {
+        setTimeout(() => {
+          const stillThere = this.stack.includes(layer);
+          if (!stillThere) return;
+          layer.currentRamp = rampSpotifyVolume(layer.player.player, 0, 1, durMs);
+        }, durMs);
+      } else {
+        layer.currentRamp = rampSpotifyVolume(layer.player.player, 0, 1, durMs);
       }
     }
   }
@@ -849,7 +1040,14 @@ class AudioEngine {
     if (node.ytUrl) {
       throw new Error(`URL YouTube invalide pour « ${node.title} »`);
     }
-    throw new Error(`Aucun fichier ni URL YouTube attaché à « ${node.title} »`);
+    if (node.spotifyUrl) {
+      // Stinger Spotify délibérément non supporté : la latence d'init
+      // (~1–2 s) et l'API REST de play sont incompatibles avec un
+      // tada qui doit déclencher en < 100 ms. Le user voit un toast
+      // explicite plutôt qu'un comportement bizarre.
+      throw new Error('Tada Spotify non supporté — utilise un fichier local ou YouTube');
+    }
+    throw new Error(`Aucune source attachée à « ${node.title} »`);
   }
 
   /**
@@ -868,6 +1066,13 @@ class AudioEngine {
       this.stinger = null;
     }
     this.playlistResume.clear();
+    // Détruit le player Spotify partagé (jalon 19) : "Tout arrêter"
+    // remet vraiment à zéro, le prochain push Spotify recréera le
+    // player + reconnectera. Pas de fuite mémoire.
+    if (this.spotifyContext) {
+      destroySpotifyPlayer(this.spotifyContext);
+      this.spotifyContext = null;
+    }
   }
 
   /**
@@ -884,7 +1089,7 @@ class AudioEngine {
         layer.gain.gain.cancelScheduledValues(now);
         layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
         layer.gain.gain.linearRampToValueAtTime(0, now + durationSec);
-      } else {
+      } else if (layer.backend === 'youtube') {
         layer.currentRamp?.cancel();
         const fromVol = (() => {
           try {
@@ -894,6 +1099,10 @@ class AudioEngine {
           }
         })();
         layer.currentRamp = rampYTVolume(layer.player, fromVol, 0, durMs);
+      } else {
+        // Spotify : volume 0–1, pas de getVolume sync — on suppose 1.
+        layer.currentRamp?.cancel();
+        layer.currentRamp = rampSpotifyVolume(layer.player.player, 1, 0, durMs);
       }
     };
 

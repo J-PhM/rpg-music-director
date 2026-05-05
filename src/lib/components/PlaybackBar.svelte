@@ -27,14 +27,16 @@
 
   /**
    * Libellé d'une couche affiché dans la barre de lecture. Préfixe
-   * "(YT) " pour les couches YouTube (jalon 17) — utile pour
-   * comprendre d'un coup d'œil que la latence et la fidélité de
-   * boucle peuvent différer du Web Audio.
+   * "(YT) " pour YouTube (jalon 17) et "(SP) " pour Spotify (jalon 19) —
+   * utile pour comprendre d'un coup d'œil que la latence et la fidélité
+   * de boucle peuvent différer du Web Audio.
    */
   function layerLabel(layer: AudioLayer): string {
     const n = store.scenario.nodes.find((x) => x.id === layer.nodeId);
     const title = n?.title ?? '?';
-    return layer.backend === 'youtube' ? `(YT) ${title}` : title;
+    if (layer.backend === 'youtube') return `(YT) ${title}`;
+    if (layer.backend === 'spotify') return `(SP) ${title}`;
+    return title;
   }
 
   const layersLabel = $derived.by((): string => {

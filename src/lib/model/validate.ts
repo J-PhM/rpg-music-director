@@ -176,6 +176,15 @@ export function validateScenario(s: unknown): ValidationResult {
         warnings.push(`Cartouche ${n.id} : bgPlaylistMode invalide, repli sur 'single'.`);
         n.bgPlaylistMode = 'single';
       }
+      // Champ Spotify ajouté au jalon 19 — repli sur '' si absent.
+      if (typeof n.bgSpotifyUrl !== 'string') {
+        n.bgSpotifyUrl = '';
+      }
+    } else {
+      // Champ Spotify sur les nœuds audio (jalon 19) — repli sur ''.
+      if (typeof n.spotifyUrl !== 'string') {
+        n.spotifyUrl = '';
+      }
     }
   }
 

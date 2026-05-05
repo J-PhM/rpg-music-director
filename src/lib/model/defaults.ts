@@ -41,6 +41,7 @@ export function createScene(p: NodeCreation): SceneNode {
     loop: true,
     localFilePath: null,
     ytUrl: '',
+    spotifyUrl: '',
   };
 }
 
@@ -56,6 +57,7 @@ export function createCharacter(p: NodeCreation): CharacterNode {
     loop: true,
     localFilePath: null,
     ytUrl: '',
+    spotifyUrl: '',
   };
 }
 
@@ -71,6 +73,7 @@ export function createStinger(p: NodeCreation): StingerNode {
     loop: false,
     localFilePath: null,
     ytUrl: '',
+    spotifyUrl: '',
   };
 }
 
@@ -85,6 +88,7 @@ export function createCartouche(p: NodeCreation): CartoucheNode {
     notes: '',
     bgLocalFilePath: null,
     bgYtUrl: '',
+    bgSpotifyUrl: '',
     bgPlaylistIds: [],
     bgPlaylistMode: 'single',
   };
