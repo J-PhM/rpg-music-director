@@ -26,7 +26,12 @@
 
   function handleTest(node: AudioNode): void {
     if (!node.localFilePath) {
-      onToast(t('toast.triggerNoFile', { title: node.title }));
+      // Différencie : URL YouTube présente mais non encore supportée vs vraiment vide
+      if (node.ytUrl) {
+        onToast(t('toast.triggerYoutubeNotYet', { title: node.title }));
+      } else {
+        onToast(t('toast.triggerNoFile', { title: node.title }));
+      }
       return;
     }
     if (node.type === 'stinger') {

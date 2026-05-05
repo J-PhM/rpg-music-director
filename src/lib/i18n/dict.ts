@@ -163,6 +163,8 @@ const fr = {
   'toast.noAudioFiles': 'Aucun fichier audio dans le glissé',
   'toast.triggerPlaceholder': '▶ {title} (audio à venir au jalon 9)',
   'toast.triggerNoFile': '⚠ Aucun morceau attaché à « {title} »',
+  'toast.triggerYoutubeNotYet':
+    '⚠ « {title} » n’a qu’une URL YouTube — la lecture YouTube viendra au jalon 17. Glisse un fichier local en attendant.',
   'toast.audioError': 'Erreur audio : {msg}',
   'toast.audioPushed': '▶ {title}',
   'toast.audioStinger': '✨ {title}',
