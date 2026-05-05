@@ -7,6 +7,7 @@
     saveScenarioToPath,
   } from '$lib/io/scenarioFile';
   import { store } from '$lib/store/scenarioStore.svelte';
+  import { history } from '$lib/history/history.svelte';
   import type { NodeType } from '$lib/model/types';
 
   interface Props {
@@ -102,6 +103,7 @@
   }
 
   function handleAdd(type: NodeType): void {
+    history.snapshot('Ajouter ' + t(`node.type.${type}` as const));
     const { x, y } = nextSpawnPosition();
     store.addNode(type, x, y);
     onToast(t('toast.nodeAdded'));
@@ -122,8 +124,29 @@
         return;
       }
     }
+    history.snapshot('Supprimer');
     const n = store.deleteNode(store.selectedId);
     onToast(n > 1 ? t('toast.nodesDeleted', { n }) : t('toast.nodeDeleted'));
+  }
+
+  // ============================================================
+  // Undo / Redo (jalon 12)
+  // ============================================================
+
+  function handleUndo(): void {
+    if (history.undo()) {
+      onToast(t('toast.undone'));
+    } else {
+      onToast(t('toast.cantUndo'));
+    }
+  }
+
+  function handleRedo(): void {
+    if (history.redo()) {
+      onToast(t('toast.redone'));
+    } else {
+      onToast(t('toast.cantRedo'));
+    }
   }
 </script>
 
@@ -220,6 +243,22 @@
   </div>
 
   <div class="group right">
+    <button
+      class="btn undo-btn"
+      type="button"
+      onclick={handleUndo}
+      disabled={!history.canUndo}
+      title={t('toolbar.tooltip.undo')}
+      aria-label={t('toolbar.undo')}
+    >↶</button>
+    <button
+      class="btn redo-btn"
+      type="button"
+      onclick={handleRedo}
+      disabled={!history.canRedo}
+      title={t('toolbar.tooltip.redo')}
+      aria-label={t('toolbar.redo')}
+    >↷</button>
     <button class="btn" type="button" onclick={() => store.recadrer()}>
       {t('toolbar.recadrer')}
     </button>
@@ -285,6 +324,15 @@
 
   .settings-btn {
     font-size: 14px;
+    padding: 4px 10px;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  /* Boutons Undo / Redo (jalon 12) — caractères symboliques larges */
+  .undo-btn,
+  .redo-btn {
+    font-size: 16px;
     padding: 4px 10px;
     line-height: 1;
     letter-spacing: 0;

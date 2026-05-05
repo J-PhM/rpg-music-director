@@ -35,8 +35,16 @@ const fr = {
   'toolbar.modePlay': '▶ Mode Jeu',
   'toolbar.modeEdit': 'Mode Préparation',
   'toolbar.eraser': '🧽 Gomme',
+  'toolbar.undo': '↶ Annuler',
+  'toolbar.redo': '↷ Rétablir',
   'toolbar.tooltip.tauriOnly': 'Disponible uniquement dans la fenêtre Tauri',
   'toolbar.tooltip.eraserNotInPlay': 'La gomme n’est pas disponible en mode Jeu',
+  'toolbar.tooltip.undo': 'Annuler (Ctrl+Z)',
+  'toolbar.tooltip.redo': 'Rétablir (Ctrl+Y)',
+  'toast.undone': 'Annulé',
+  'toast.redone': 'Rétabli',
+  'toast.cantUndo': 'Rien à annuler',
+  'toast.cantRedo': 'Rien à rétablir',
 
   // === Mode gomme (jalon 11) ===
   'eraser.banner': 'Mode Gomme — clic pour effacer · Échap pour sortir',

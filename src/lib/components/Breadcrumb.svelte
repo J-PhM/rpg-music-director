@@ -13,6 +13,7 @@
   import { tick } from 'svelte';
   import { getBreadcrumb, type BreadcrumbItem } from '$lib/model/navigation';
   import { store } from '$lib/store/scenarioStore.svelte';
+  import { history } from '$lib/history/history.svelte';
 
   // Liste d'items dérivée du scénario courant + sélection navigationnelle
   const items = $derived<BreadcrumbItem[]>(
@@ -42,6 +43,8 @@
       editing = null;
       return;
     }
+    // Snapshot AVANT le renommage : permet d'annuler avec Ctrl+Z.
+    history.snapshot('Renommer');
     if (editing.id === null) {
       store.renameCampaign(value);
     } else {

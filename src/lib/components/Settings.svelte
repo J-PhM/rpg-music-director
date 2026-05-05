@@ -17,6 +17,7 @@
   import { isTauriContext, pickImage } from '$lib/io/scenarioFile';
   import { i18n, t } from '$lib/i18n/i18n.svelte';
   import { store } from '$lib/store/scenarioStore.svelte';
+  import { history } from '$lib/history/history.svelte';
   import type { Language } from '$lib/model/types';
 
   interface Props {
@@ -43,6 +44,7 @@
     try {
       const path = await pickImage();
       if (!path) return;
+      history.snapshot('Image de fond');
       store.setBackgroundImagePath(path);
       onToast(t('settings.toast.bgChanged'));
     } catch (e) {
@@ -51,16 +53,22 @@
   }
 
   function handleResetImage(): void {
+    history.snapshot('Fond par défaut');
     store.setBackgroundImagePath(null);
     onToast(t('settings.toast.bgReset'));
   }
 
   function handleRemoveImage(): void {
+    history.snapshot('Aucun fond');
     store.setBackgroundImagePath('');
     onToast(t('settings.toast.bgRemoved'));
   }
 
   function handleOpacityInput(e: Event): void {
+    // Coalescing : tous les ticks consécutifs du slider sont fondus
+    // en une seule entrée d'historique (le snapshot original = état
+    // AVANT le drag, qui sera restauré par Ctrl+Z).
+    history.snapshot('Opacité du fond', 'opacity-slider', 1500);
     const v = Number((e.target as HTMLInputElement).value);
     store.setBackgroundOpacity(v);
   }

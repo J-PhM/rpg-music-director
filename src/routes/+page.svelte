@@ -16,6 +16,8 @@
   import PlaybackBar from '$lib/components/PlaybackBar.svelte';
   import Settings from '$lib/components/Settings.svelte';
   import Toolbar from '$lib/components/Toolbar.svelte';
+  import { history } from '$lib/history/history.svelte';
+  import { t } from '$lib/i18n/i18n.svelte';
 
   // Toast partagé : Toolbar/Canvas/Settings émettent, la page affiche.
   let toastMsg = $state<string>('');
@@ -37,7 +39,39 @@
   function closeSettings(): void {
     settingsOpen = false;
   }
+
+  /**
+   * Raccourcis clavier globaux pour annuler/rétablir (jalon 12).
+   * - Ctrl+Z (Cmd+Z sur macOS) : annuler
+   * - Ctrl+Y ou Ctrl+Shift+Z : rétablir
+   *
+   * On ignore l'événement si le focus est dans un champ texte —
+   * dans un input, Ctrl+Z doit faire l'undo natif du navigateur sur
+   * la frappe, pas l'undo de l'app.
+   */
+  function isInTextInput(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return target.isContentEditable;
+  }
+
+  function handleKeyDown(e: KeyboardEvent): void {
+    if (isInTextInput(e.target)) return;
+    const ctrl = e.ctrlKey || e.metaKey; // Cmd sur macOS
+    if (!ctrl) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (history.undo()) showToast(t('toast.undone'));
+    } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+      e.preventDefault();
+      if (history.redo()) showToast(t('toast.redone'));
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeyDown} />
 
 <div class="app">
   <Toolbar onToast={showToast} onOpenSettings={openSettings} />

@@ -30,6 +30,7 @@
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { isTauriContext } from '$lib/io/scenarioFile';
+  import { history } from '$lib/history/history.svelte';
   import {
     isAudioFile,
     subscribeToTauriDrop,
@@ -282,6 +283,8 @@
   /** Drag de déplacement d'un nœud. */
   let nodeDragId = $state<NodeId | null>(null);
   let nodeDragOffset = { x: 0, y: 0 };
+  /** Snapshot data pris au début du drag, poussé au pointerup si moved. */
+  let dragStartSnapshot: string | null = null;
 
   /** Drag de création de connexion. */
   let connectFromId = $state<NodeId | null>(null);
@@ -353,6 +356,7 @@
             if (!ok) return;
           }
         }
+        history.snapshot('Effacer');
         const n = store.deleteNode(hit.id);
         onToast(n > 1 ? t('toast.nodesErased', { n }) : t('toast.nodeErased'));
       }
@@ -413,6 +417,9 @@
       store.select(hitNode.id);
       nodeDragOffset = { x: pt.x - hitNode.x, y: pt.y - hitNode.y };
       nodeDragId = hitNode.id;
+      // Snapshot pour undo : capturé maintenant, poussé au pointerup
+      // uniquement si le nœud a vraiment bougé (cf. handleSvgPointerUp).
+      dragStartSnapshot = history.currentSnapshot();
       svgEl.setPointerCapture(e.pointerId);
       return;
     }
@@ -454,6 +461,17 @@
       const pt = clientToWorld(e);
       const target = findPortAt(pt.x, pt.y);
       if (target && target.role === 'in') {
+        // Snapshot AVANT addConnection. addConnection est idempotent
+        // (renvoie 'exists' si doublon) donc pas de risque de snapshot
+        // inutile — sauf si on déduplique en amont. On préfère snapshot
+        // après le check 'created' pour ne pas polluer l'historique avec
+        // des "tentatives sans effet".
+        const wouldExist = store.scenario.connections.some(
+          (c) => c.from === connectFromId && c.to === target.nodeId,
+        );
+        if (!wouldExist && connectFromId !== target.nodeId) {
+          history.snapshot('Connexion');
+        }
         const result = store.addConnection(connectFromId, target.nodeId);
         if (result === 'created') {
           // Détecte transverse : extrémités dans des cartouches différents.
@@ -481,12 +499,19 @@
       } catch {
         // idem
       }
+      // Pousse le snapshot dans l'historique uniquement si quelque chose
+      // a réellement changé (pushExplicit no-op sinon — voir history.ts).
+      if (dragStartSnapshot) {
+        history.pushExplicit(dragStartSnapshot, 'Déplacer');
+        dragStartSnapshot = null;
+      }
       nodeDragId = null;
     }
   }
 
   function handleConnectionClick(index: number, e: MouseEvent): void {
     e.stopPropagation();
+    history.snapshot('Supprimer connexion');
     store.deleteConnectionByIndex(index);
     onToast(t('toast.connectionDeleted'));
   }
@@ -656,6 +681,7 @@
       // Sur un nœud audio existant : remplacer la source
       if (hit && hit.type !== 'cartouche') {
         const path = audioPaths[0];
+        history.snapshot('Attacher fichier');
         store.attachAudioFile(hit.id, path);
         onToast(t('toast.fileAttached', { name: titleFromPath(path) }));
         return;
@@ -664,12 +690,16 @@
       // Sur une cartouche : devient le fond
       if (hit && hit.type === 'cartouche') {
         const path = audioPaths[0];
+        history.snapshot('Attacher fond');
         store.attachCartoucheBg(hit.id, path);
         onToast(t('toast.bgAttached', { name: titleFromPath(path) }));
         return;
       }
 
       // Canvas vide : créer une (ou plusieurs) scènes
+      history.snapshot(
+        audioPaths.length === 1 ? 'Créer scène' : `Créer ${audioPaths.length} scènes`,
+      );
       const baseTitle = titleFromPath(audioPaths[0]);
       let offset = 0;
       for (const path of audioPaths) {

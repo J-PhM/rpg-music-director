@@ -18,6 +18,25 @@
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { engine } from '$lib/audio/engine.svelte';
+  import { history } from '$lib/history/history.svelte';
+
+  // === Snapshot par session d'édition (jalon 12) ===
+  // Une "session" = entre focus et blur d'un champ. Un snapshot est
+  // capturé au focus, poussé à l'historique au blur si l'état a changé.
+  // Donne une granularité naturelle d'undo : un clic dans un champ +
+  // édition + clic ailleurs = une étape annulable.
+  let editStartSnapshot: string | null = null;
+  function handleEditFocus(): void {
+    if (editStartSnapshot === null) {
+      editStartSnapshot = history.currentSnapshot();
+    }
+  }
+  function handleEditBlur(): void {
+    if (editStartSnapshot !== null) {
+      history.pushExplicit(editStartSnapshot, 'Édition');
+      editStartSnapshot = null;
+    }
+  }
 
   interface Props {
     onToast: (msg: string) => void;
@@ -84,7 +103,14 @@
     <p class="type-hint">{t(`node.hint.${node.type}` as const)}</p>
 
     <label class="label" for="i-title">{t('inspector.fields.title')}</label>
-    <input id="i-title" class="field" type="text" bind:value={node.title} />
+    <input
+      id="i-title"
+      class="field"
+      type="text"
+      bind:value={node.title}
+      onfocus={handleEditFocus}
+      onblur={handleEditBlur}
+    />
 
     <!-- Statut du fichier audio (drag-and-drop arrive au jalon 7) -->
     {#if node.localFilePath}
@@ -102,10 +128,17 @@
       bind:value={node.ytUrl}
       placeholder="https://www.youtube.com/watch?v=…"
       disabled={!!node.localFilePath}
+      onfocus={handleEditFocus}
+      onblur={handleEditBlur}
     />
 
     <label class="label loop-label">
-      <input type="checkbox" bind:checked={node.loop} />
+      <input
+        type="checkbox"
+        bind:checked={node.loop}
+        onpointerdown={handleEditFocus}
+        onchange={handleEditBlur}
+      />
       <span>{t('inspector.fields.loop')}</span>
     </label>
 
@@ -115,6 +148,8 @@
       class="field"
       bind:value={node.notes}
       placeholder={t('inspector.fields.notesPlaceholder')}
+      onfocus={handleEditFocus}
+      onblur={handleEditBlur}
     ></textarea>
 
     <div class="audio-actions">
@@ -137,7 +172,14 @@
     <p class="type-hint">{t('node.hint.cartouche')}</p>
 
     <label class="label" for="i-title">{t('inspector.fields.title')}</label>
-    <input id="i-title" class="field" type="text" bind:value={node.title} />
+    <input
+      id="i-title"
+      class="field"
+      type="text"
+      bind:value={node.title}
+      onfocus={handleEditFocus}
+      onblur={handleEditBlur}
+    />
 
     <fieldset class="bg-block">
       <legend class="kicker">{t('node.type.cartouche')} · Fond</legend>
@@ -158,10 +200,18 @@
         bind:value={node.bgYtUrl}
         placeholder="https://www.youtube.com/watch?v=…"
         disabled={!!node.bgLocalFilePath}
+        onfocus={handleEditFocus}
+        onblur={handleEditBlur}
       />
 
       <label class="label" for="i-bg-mode">{t('inspector.fields.bgPlaylistMode')}</label>
-      <select id="i-bg-mode" class="field" bind:value={node.bgPlaylistMode}>
+      <select
+        id="i-bg-mode"
+        class="field"
+        bind:value={node.bgPlaylistMode}
+        onfocus={handleEditFocus}
+        onchange={handleEditBlur}
+      >
         <option value="single">{t('inspector.fields.bgPlaylistMode.single')}</option>
         <option value="sequential">{t('inspector.fields.bgPlaylistMode.sequential')}</option>
       </select>
@@ -173,6 +223,8 @@
       class="field"
       bind:value={node.notes}
       placeholder={t('inspector.fields.notesPlaceholder')}
+      onfocus={handleEditFocus}
+      onblur={handleEditBlur}
     ></textarea>
 
     <div class="content-count kicker">

@@ -23,6 +23,7 @@ import { isCartouche, viewKey, type Node, type NodeId, type NodeType, type Scena
 import { setLang } from '$lib/i18n/i18n.svelte';
 import { createNode } from '$lib/model/defaults';
 import { engine } from '$lib/audio/engine.svelte';
+import { history } from '$lib/history/history.svelte';
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
@@ -140,6 +141,9 @@ class ScenarioStore {
     this.baseSerialization = toJson(scenario);
     setLang(scenario.language);
     this.ensureCurrentViewExists();
+    // L'historique d'annulation est purement en mémoire : un load
+    // efface l'historique de la session précédente (cf. cahier).
+    history.clear();
     // Restaure le bg du cartouche courant (si on a chargé un scénario
     // dont currentCartoucheId pointe sur un cartouche avec bg).
     this.syncCartoucheBg([], this.cartouchePath());
