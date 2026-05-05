@@ -22,9 +22,22 @@
   import { isTauriContext } from '$lib/io/scenarioFile';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { toJson } from '$lib/model/serialize';
+  import { applyPreset } from '$lib/themes/applyPreset';
+  import { onMount } from 'svelte';
 
   /** Délai après la dernière modification avant la sauvegarde auto. */
   const AUTO_SAVE_DEBOUNCE_MS = 2000;
+
+  // Applique le thème du scénario initial au premier mount.
+  // loadScenario() le fait à chaque ouverture de fichier, mais le
+  // store est initialisé avec EXAMPLE_SCENARIO sans passer par
+  // loadScenario — il faut donc compléter ici pour que les
+  // attributs `data-theme-preset` et `data-theme-mode` soient
+  // posés sur <html> dès le premier paint (utile aux règles CSS
+  // conditionnelles, ex. mix-blend-mode du fond fossile).
+  onMount(() => {
+    applyPreset(store.scenario.theme.preset, store.scenario.theme.mode);
+  });
 
   // Toast partagé : Toolbar/Canvas/Settings émettent, la page affiche.
   let toastMsg = $state<string>('');

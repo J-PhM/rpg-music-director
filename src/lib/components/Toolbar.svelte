@@ -1,7 +1,16 @@
 <script lang="ts">
   import { t } from '$lib/i18n/i18n.svelte';
   import { isTauriContext } from '$lib/io/scenarioFile';
-  import { appLoadExample, appNew, appOpen, appSave, appSaveAs } from '$lib/io/actions';
+  import {
+    appLoadExample,
+    appNew,
+    appOpen,
+    appOpenPath,
+    appSave,
+    appSaveAs,
+  } from '$lib/io/actions';
+  import { titleFromPath } from '$lib/io/dragDrop';
+  import { clearRecents, loadRecents } from '$lib/io/recents';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { history } from '$lib/history/history.svelte';
   import type { NodeType } from '$lib/model/types';
@@ -54,6 +63,52 @@
       showSavedFlash = false;
     }, 1500);
     return () => clearTimeout(tid);
+  });
+
+  // ============================================================
+  // Menu Récents (jalon 18). On recharge la liste à chaque ouverture
+  // pour refléter les ajouts faits par appSave/appSaveAs.
+  // ============================================================
+  let recentsOpen = $state(false);
+  let recents = $state<string[]>([]);
+  let recentsRoot: HTMLElement | undefined = $state();
+
+  function toggleRecents(): void {
+    if (!recentsOpen) {
+      recents = loadRecents();
+    }
+    recentsOpen = !recentsOpen;
+  }
+
+  function handleRecentClick(path: string): void {
+    recentsOpen = false;
+    void appOpenPath(onToast, path);
+  }
+
+  function handleClearRecents(): void {
+    clearRecents();
+    recents = [];
+    recentsOpen = false;
+    onToast(t('toolbar.recents.cleared'));
+  }
+
+  // Fermeture sur clic en dehors et sur Échap.
+  $effect(() => {
+    if (!recentsOpen) return;
+    function onPointerDown(e: PointerEvent): void {
+      if (recentsRoot && !recentsRoot.contains(e.target as Node)) {
+        recentsOpen = false;
+      }
+    }
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') recentsOpen = false;
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   });
 
   // ============================================================
@@ -140,6 +195,45 @@
     >
       {t('toolbar.open')}
     </button>
+    <div class="recents-wrap" bind:this={recentsRoot}>
+      <button
+        class="btn recents-toggle"
+        type="button"
+        onclick={toggleRecents}
+        disabled={!inTauri}
+        title={inTauri ? t('toolbar.recents.tooltip') : t('toolbar.tooltip.tauriOnly')}
+        aria-haspopup="menu"
+        aria-expanded={recentsOpen}
+      >
+        {t('toolbar.recents')}<span class="caret" aria-hidden="true">▾</span>
+      </button>
+      {#if recentsOpen}
+        <div class="recents-menu" role="menu">
+          {#if recents.length === 0}
+            <p class="recents-empty">{t('toolbar.recents.empty')}</p>
+          {:else}
+            {#each recents as path (path)}
+              <button
+                class="recents-item"
+                type="button"
+                role="menuitem"
+                onclick={() => handleRecentClick(path)}
+              >
+                <span class="recents-name">{titleFromPath(path, 36)}</span>
+                <span class="recents-path">{path}</span>
+              </button>
+            {/each}
+            <hr class="recents-sep" />
+            <button
+              class="recents-item recents-clear"
+              type="button"
+              role="menuitem"
+              onclick={handleClearRecents}
+            >{t('toolbar.recents.clear')}</button>
+          {/if}
+        </div>
+      {/if}
+    </div>
     <button
       class="btn"
       type="button"
@@ -340,6 +434,102 @@
       opacity: 1;
       transform: none;
     }
+  }
+
+  /* Menu Récents (jalon 18) */
+  .recents-wrap {
+    position: relative;
+  }
+  .recents-toggle {
+    /* Plus compact : on a juste un libellé + un chevron, pas besoin du
+       padding standard d'un bouton textuel large. */
+    padding: 6px 10px 6px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .caret {
+    font-size: 9px;
+    line-height: 1;
+    color: var(--accent);
+    margin-left: 2px;
+  }
+  .recents-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 320px;
+    max-width: 480px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    box-shadow: 0 6px 18px rgba(20, 16, 10, 0.18);
+    z-index: 50;
+    animation: recents-in 150ms var(--ease) both;
+    padding: 4px 0;
+  }
+  @keyframes recents-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .recents-empty {
+    margin: 8px 14px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    font-style: italic;
+  }
+  .recents-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 7px 14px;
+    font-family: inherit;
+    color: var(--ink);
+    transition:
+      background var(--t-fast) var(--ease),
+      color var(--t-fast) var(--ease);
+  }
+  .recents-item:hover {
+    background: var(--paper-deep);
+  }
+  .recents-name {
+    display: block;
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+  .recents-path {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-soft);
+    line-height: 1.3;
+    margin-top: 1px;
+    word-break: break-all;
+  }
+  .recents-sep {
+    border: none;
+    border-top: 1px solid var(--rule-soft);
+    margin: 4px 0;
+  }
+  .recents-clear {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-family: var(--font-mono);
+    color: var(--ink-soft);
+  }
+  .recents-clear:hover {
+    color: var(--warm);
   }
 
   /* Bouton Gomme actif : couleur terre cuite appuyée (cf. cahier) */

@@ -959,8 +959,13 @@
 
   /* Image de fond optionnelle (par défaut le fossile bundlé). Mise
      en pseudo-élément pour pouvoir contrôler l'opacité indépendamment
-     du contenu. mix-blend-mode: multiply pour intégrer la texture
-     dans le vélin sans dénaturer les couleurs des nœuds. */
+     du contenu.
+     - Mode clair : `multiply` intègre la texture dans le vélin sans
+       éclaircir le rendu (la texture est plus claire que l'encre).
+     - Mode sombre : `multiply` rendrait la texture quasi invisible
+       (la texture sépia est plus claire que le fond sombre, donc
+       multiplier obscurcit). On bascule sur `screen` qui éclaircit
+       symétriquement et garde la texture lisible. (jalon 18) */
   .canvas-area::before {
     content: '';
     position: absolute;
@@ -973,6 +978,9 @@
     mix-blend-mode: multiply;
     pointer-events: none;
     z-index: 0;
+  }
+  :global([data-theme-mode='dark']) .canvas-area::before {
+    mix-blend-mode: screen;
   }
 
   svg {

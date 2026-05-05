@@ -13,6 +13,8 @@
 
 import { t } from '$lib/i18n/i18n.svelte';
 import { store } from '$lib/store/scenarioStore.svelte';
+import { fromJson } from '$lib/model/serialize';
+import { pushRecent, removeRecent } from './recents';
 import {
   isTauriContext,
   openScenario,
@@ -52,6 +54,7 @@ export async function appOpen(toast: Toast): Promise<void> {
     const result = await openScenario();
     if (!result) return;
     store.loadScenario(result.scenario, result.path);
+    pushRecent(result.path);
 
     const warnSuffix = result.warnings.length
       ? result.warnings.length === 1
@@ -65,6 +68,43 @@ export async function appOpen(toast: Toast): Promise<void> {
     }
   } catch (e) {
     toast(t('toast.error', { msg: e instanceof Error ? e.message : String(e) }));
+  }
+}
+
+/**
+ * Ouvre directement un scénario à un chemin connu (sans dialog).
+ * Utilisé par le menu Récents. Si le fichier est introuvable ou
+ * corrompu, on retire le path de la liste des récents et on toaste.
+ */
+export async function appOpenPath(toast: Toast, path: string): Promise<void> {
+  if (!isTauriContext()) {
+    toast(t('toolbar.tooltip.tauriOnly'));
+    return;
+  }
+  if (store.modified && !window.confirm(t('confirm.discardChanges'))) return;
+  try {
+    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+    const text = await readTextFile(path);
+    const result = fromJson(text);
+    store.loadScenario(result.scenario, path);
+    pushRecent(path);
+
+    const warnSuffix = result.warnings.length
+      ? result.warnings.length === 1
+        ? ' ' + t('toast.warningSuffix.one')
+        : ' ' + t('toast.warningSuffix.many', { n: result.warnings.length })
+      : '';
+    toast((result.migrated ? t('toast.openedMigrated') : t('toast.opened')) + warnSuffix);
+
+    if (result.warnings.length) {
+      for (const w of result.warnings) console.warn('[scenario]', w);
+    }
+  } catch (e) {
+    // Fichier déplacé / supprimé : on retire de la liste pour éviter
+    // que l'utilisateur retombe dessus à chaque ouverture du menu.
+    removeRecent(path);
+    toast(t('toast.recentMissing'));
+    console.warn('[recents] open failed', e);
   }
 }
 
@@ -83,6 +123,7 @@ export async function appSave(toast: Toast): Promise<boolean> {
   try {
     await saveScenarioToPath(store.scenario, store.currentPath);
     store.markSaved(store.currentPath);
+    pushRecent(store.currentPath);
     toast(t('toast.saved'));
     return true;
   } catch (e) {
@@ -101,6 +142,7 @@ export async function appSaveAs(toast: Toast): Promise<boolean> {
     const path = await saveScenarioAs(store.scenario);
     if (!path) return false;
     store.markSaved(path);
+    pushRecent(path);
     toast(t('toast.saved'));
     return true;
   } catch (e) {
