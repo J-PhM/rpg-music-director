@@ -11,9 +11,25 @@
       href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@300;400;500&display=swap"
       rel="stylesheet"
     />
+    <!--
+      IFrame API YouTube (jalon 17). Chargée en async pour ne pas
+      bloquer le rendu. `loadYouTubeApi()` côté JS attend
+      `window.onYouTubeIframeAPIReady` avant de créer un player.
+    -->
+    <script async src="https://www.youtube.com/iframe_api"></script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>
+    <!--
+      Hôte des iframes YouTube (jalon 17). Les YT.Player créés par
+      l'IFrame API y sont insérés. Caché : zéro pixel utile à l'écran,
+      mais reste dans le DOM pour que les iframes restent vivantes.
+    -->
+    <div
+      id="yt-players-host"
+      aria-hidden="true"
+      style="position: fixed; bottom: 0; right: 0; width: 0; height: 0; overflow: hidden; pointer-events: none;"
+    ></div>
   </body>
 </html>

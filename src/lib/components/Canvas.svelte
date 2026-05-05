@@ -368,14 +368,10 @@
     if (store.mode === 'play') {
       const hit = findNodeAt(pt.x, pt.y);
       if (hit && hit.type !== 'cartouche') {
-        if (!hit.localFilePath) {
-          // Distingue : URL YouTube présente (jalon 17 à venir) vs vraiment vide
-          if (hit.ytUrl) {
-            onToast(t('toast.triggerYoutubeNotYet', { title: hit.title }));
-          } else {
-            onToast(t('toast.triggerNoFile', { title: hit.title }));
-          }
-        } else if (hit.type === 'stinger') {
+        // Le moteur (jalon 17) aiguille vers Web Audio si fichier
+        // local, sinon YouTube si URL valide ; sinon throw avec un
+        // message explicite qui devient le toast d'erreur.
+        if (hit.type === 'stinger') {
           // Tada : canal séparé, ne touche pas la pile.
           engine
             .playStinger(hit)

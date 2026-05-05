@@ -16,7 +16,7 @@
    * sous-jalon ultérieur — il faut une UI dédiée plus consistante.
    */
 
-  import { engine } from '$lib/audio/engine.svelte';
+  import { engine, type AudioLayer } from '$lib/audio/engine.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { store } from '$lib/store/scenarioStore.svelte';
 
@@ -25,9 +25,16 @@
   }
   let { onToast }: Props = $props();
 
-  function nodeTitle(nodeId: number): string {
-    const n = store.scenario.nodes.find((x) => x.id === nodeId);
-    return n?.title ?? '?';
+  /**
+   * Libellé d'une couche affiché dans la barre de lecture. Préfixe
+   * "(YT) " pour les couches YouTube (jalon 17) — utile pour
+   * comprendre d'un coup d'œil que la latence et la fidélité de
+   * boucle peuvent différer du Web Audio.
+   */
+  function layerLabel(layer: AudioLayer): string {
+    const n = store.scenario.nodes.find((x) => x.id === layer.nodeId);
+    const title = n?.title ?? '?';
+    return layer.backend === 'youtube' ? `(YT) ${title}` : title;
   }
 
   const layersLabel = $derived.by((): string => {
@@ -52,14 +59,14 @@
   <div class="np">
     <div class="label">{t('playback.now')}</div>
     <div class="title" class:silent={!engine.topLayer}>
-      {engine.topLayer ? nodeTitle(engine.topLayer.nodeId) : t('playback.silent')}
+      {engine.topLayer ? layerLabel(engine.topLayer) : t('playback.silent')}
     </div>
   </div>
 
   <div class="np">
     <div class="label">{t('playback.tada')}</div>
     <div class="title" class:silent={!engine.stinger}>
-      {engine.stinger ? nodeTitle(engine.stinger.nodeId) : t('playback.empty')}
+      {engine.stinger ? layerLabel(engine.stinger) : t('playback.empty')}
     </div>
   </div>
 

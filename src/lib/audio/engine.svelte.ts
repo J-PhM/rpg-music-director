@@ -31,6 +31,14 @@ import {
   type NodeId,
   type Transitions,
 } from '$lib/model/types';
+import {
+  createPlayer as createYTPlayer,
+  destroyPlayer as destroyYTPlayer,
+  parseYouTubeId,
+  rampVolume as rampYTVolume,
+  type VolumeRamp,
+  type YTPlayer,
+} from './youtube';
 
 /**
  * Durée par défaut du fade-out global (Tout arrêter doux). Conceptuellement
@@ -53,23 +61,48 @@ export interface PlaylistState {
 }
 
 /**
- * Une couche active dans la pile (ou le canal Tada).
- * `source` et `gain` sont les nœuds Web Audio gérés par le moteur.
+ * Champs communs aux deux backends. Une même node n'apparaît qu'une
+ * fois dans la pile : la déduplication retire l'ancienne instance.
  */
-export interface AudioLayer {
-  /** Identifiant unique d'instance (UUID). Une même node peut avoir plusieurs instances ? non — on déduplique. */
+interface BaseAudioLayer {
+  /** Identifiant unique d'instance (UUID). */
   id: string;
   /** Id du nœud du modèle (pour retrouver le titre). */
   nodeId: NodeId;
   /** Type d'origine, utile pour la PlaybackBar. */
   kind: 'scene' | 'character' | 'cartoucheBg' | 'stinger';
-  source: AudioBufferSourceNode;
-  gain: GainNode;
   /** Timestamp `performance.now()` au démarrage, pour info / debug. */
   startedAt: number;
+}
+
+/**
+ * Couche jouée via Web Audio (fichier local décodé en buffer).
+ * Sourdine via `gain.gain`, fades via `linearRampToValueAtTime`,
+ * boucle sample-perfect via `source.loop = true`.
+ */
+export interface WebAudioLayer extends BaseAudioLayer {
+  backend: 'webaudio';
+  source: AudioBufferSourceNode;
+  gain: GainNode;
   /** Si défini, c'est une playlist fleuve : enchaînement automatique. */
   playlist?: PlaylistState;
 }
+
+/**
+ * Couche jouée via YouTube (IFrame API). Pas d'accès au flux brut :
+ * sourdine via `setVolume(0)`, fades simulés via `rampVolume` (60 fps),
+ * boucle imparfaite via `playVideo()` à l'event `ENDED` (gap 200–500 ms).
+ */
+export interface YouTubeLayer extends BaseAudioLayer {
+  backend: 'youtube';
+  player: YTPlayer;
+  loop: boolean;
+  /** Animation de volume en cours (annulée avant chaque nouveau ramp). */
+  currentRamp?: VolumeRamp;
+}
+
+/** Une couche active dans la pile ou le canal Tada (jalon 17 — multi-backend). */
+export type AudioLayer = WebAudioLayer | YouTubeLayer;
 
 class AudioEngine {
   /**
@@ -194,22 +227,31 @@ class AudioEngine {
     return { source, gain };
   }
 
-  /** Tear down propre d'une couche (stop + disconnect). */
+  /**
+   * Tear down propre d'une couche, indépendamment du backend.
+   * - Web Audio : stop + disconnect des nœuds.
+   * - YouTube  : annule la rampe de volume en cours et détruit le player.
+   */
   private tearDown(layer: AudioLayer): void {
-    try {
-      layer.source.stop();
-    } catch {
-      /* déjà stoppée */
-    }
-    try {
-      layer.source.disconnect();
-    } catch {
-      /* déjà déconnectée */
-    }
-    try {
-      layer.gain.disconnect();
-    } catch {
-      /* idem */
+    if (layer.backend === 'webaudio') {
+      try {
+        layer.source.stop();
+      } catch {
+        /* déjà stoppée */
+      }
+      try {
+        layer.source.disconnect();
+      } catch {
+        /* déjà déconnectée */
+      }
+      try {
+        layer.gain.disconnect();
+      } catch {
+        /* idem */
+      }
+    } else {
+      layer.currentRamp?.cancel();
+      destroyYTPlayer(layer.player);
     }
   }
 
@@ -248,15 +290,9 @@ class AudioEngine {
     const now = ctx.currentTime;
     const previousTop = this.stack[this.stack.length - 1];
 
-    // Sortie du sommet précédent : cut net ou fade-out vers 0.
+    // Sortie du sommet précédent (peut être de l'un ou l'autre backend).
     if (previousTop) {
-      previousTop.gain.gain.cancelScheduledValues(now);
-      previousTop.gain.gain.setValueAtTime(previousTop.gain.gain.value, now);
-      if (tr.type === 'cut') {
-        previousTop.gain.gain.setValueAtTime(0, now);
-      } else {
-        previousTop.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
-      }
+      this._fadeOutSilence(previousTop, tr);
     }
 
     // Démarrage de la nouvelle couche.
@@ -274,7 +310,8 @@ class AudioEngine {
     }
     source.start(startAt);
 
-    const layer: AudioLayer = {
+    const layer: WebAudioLayer = {
+      backend: 'webaudio',
       id: crypto.randomUUID(),
       nodeId: id,
       kind,
@@ -286,41 +323,244 @@ class AudioEngine {
   }
 
   /**
-   * Empile un nœud audio (scène, personnage). Le sommet précédent
-   * est mis en sourdine, la nouvelle couche démarre en fade-in.
-   * Si le nœud est déjà dans la pile, l'instance précédente est
-   * retirée d'abord (= "remonter au sommet").
+   * Push d'une couche YouTube (jalon 17). Crée un YT.Player, attend
+   * `onReady`, puis applique la même logique de transition que
+   * `_pushInternal` mais via `setVolume` / `rampVolume`.
+   *
+   * Note : la création d'un player IFrame coûte ~100–300 ms (réseau
+   * + init), pendant lesquels rien ne joue. Acceptable en partie de
+   * MJ, le proto avait le même délai.
+   */
+  private async _pushYouTube(
+    id: NodeId,
+    videoId: string,
+    loop: boolean,
+    kind: AudioLayer['kind'],
+  ): Promise<void> {
+    // Déduplication identique au backend Web Audio.
+    const existingIdx = this.indexInStackByNodeId(id);
+    if (existingIdx !== -1) {
+      const old = this.stack[existingIdx];
+      this.tearDown(old);
+      this.stack.splice(existingIdx, 1);
+    }
+
+    const tr = this.transitions;
+    const layerId = crypto.randomUUID();
+
+    // Création du player. Le `onEnded` re-démarre la vidéo si loop=true
+    // — c'est le pattern du proto (gap inhérent à l'IFrame API accepté
+    // par le cahier).
+    const player = await createYTPlayer(videoId, {
+      onEnded: () => {
+        const layer = this.stack.find((l) => l.id === layerId);
+        if (!layer || layer.backend !== 'youtube') return;
+        if (layer.loop) {
+          try {
+            layer.player.playVideo();
+          } catch {
+            /* ignore */
+          }
+        }
+      },
+    });
+
+    // Sortie du sommet précédent (peut être de l'un ou l'autre backend).
+    const previousTop = this.stack[this.stack.length - 1];
+    if (previousTop) {
+      this._fadeOutSilence(previousTop, tr);
+    }
+
+    // Démarrage de la nouvelle couche YouTube.
+    const durMs = tr.durationSec * 1000;
+    if (tr.type === 'cut') {
+      try {
+        player.setVolume(100);
+        player.playVideo();
+      } catch {
+        /* ignore */
+      }
+    } else if (tr.type === 'fade') {
+      // Séquentiel : démarre après le fade-out, à volume 0 puis fade-in.
+      setTimeout(() => {
+        try {
+          player.setVolume(0);
+          player.playVideo();
+        } catch {
+          /* ignore */
+        }
+      }, durMs);
+      // Le ramp démarre après le délai. On garde une référence pour
+      // pouvoir l'annuler en cas de pop précoce.
+      setTimeout(() => {
+        const layer = this.stack.find((l) => l.id === layerId);
+        if (!layer || layer.backend !== 'youtube') return;
+        layer.currentRamp = rampYTVolume(layer.player, 0, 100, durMs);
+      }, durMs);
+    } else {
+      // Crossfade : démarre immédiatement, fade-in en parallèle.
+      try {
+        player.setVolume(0);
+        player.playVideo();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const layer: YouTubeLayer = {
+      backend: 'youtube',
+      id: layerId,
+      nodeId: id,
+      kind,
+      player,
+      loop,
+      startedAt: performance.now(),
+    };
+    if (tr.type === 'crossfade') {
+      layer.currentRamp = rampYTVolume(player, 0, 100, durMs);
+    }
+    this.stack.push(layer);
+  }
+
+  /**
+   * Aiguille une couche vers le bon backend selon ce que la node
+   * fournit. Priorité au fichier local (latence + sample-perfect).
+   * Renvoie une erreur explicite si rien n'est attaché.
    */
   async pushLayer(
     node: AudioNode,
     kind: AudioLayer['kind'] = node.type as AudioLayer['kind'],
   ): Promise<void> {
-    if (!node.localFilePath) {
-      throw new Error(`Aucun fichier local attaché à « ${node.title} »`);
+    if (node.localFilePath) {
+      return this._pushInternal(node.id, node.localFilePath, !!node.loop, kind);
     }
-    return this._pushInternal(node.id, node.localFilePath, !!node.loop, kind);
+    const ytId = parseYouTubeId(node.ytUrl);
+    if (ytId) {
+      return this._pushYouTube(node.id, ytId, !!node.loop, kind);
+    }
+    if (node.ytUrl) {
+      throw new Error(`URL YouTube invalide pour « ${node.title} »`);
+    }
+    throw new Error(`Aucun fichier ni URL YouTube attaché à « ${node.title} »`);
   }
 
   /**
-   * Empile la musique de fond d'un cartouche (jalon 10). Détecte
-   * automatiquement le mode :
-   * - `bgPlaylistMode === 'sequential'` ET liste non vide → playlist fleuve.
-   * - sinon → fichier unique en boucle.
+   * Empile la musique de fond d'un cartouche (jalon 10 + 17). Détecte
+   * automatiquement :
+   * - `bgPlaylistMode === 'sequential'` + liste non vide → playlist
+   *   fleuve (backend Web Audio uniquement, cf. jalon 17 hors scope).
+   * - `bgLocalFilePath` défini → fichier unique en boucle (Web Audio).
+   * - `bgYtUrl` valide → fichier unique YouTube (jalon 17).
    *
    * Pour la playlist fleuve : si on a une position mémorisée pour
    * ce cartouche (sortie + ré-entrée plus tard), on reprend
    * exactement où on en était (cf. cahier "Tracking de position").
    */
   async pushCartoucheBg(node: CartoucheNode): Promise<void> {
-    // Cas playlist fleuve
+    // Cas playlist fleuve (Web Audio uniquement).
     if (node.bgPlaylistMode === 'sequential' && node.bgPlaylistIds.length > 0) {
       return this._pushPlaylist(node);
     }
-    // Cas fichier unique (rétro-compatible)
-    if (!node.bgLocalFilePath) {
-      throw new Error(`Aucun fond local attaché à « ${node.title} »`);
+    // Cas fichier local unique.
+    if (node.bgLocalFilePath) {
+      return this._pushInternal(node.id, node.bgLocalFilePath, true, 'cartoucheBg');
     }
-    return this._pushInternal(node.id, node.bgLocalFilePath, true, 'cartoucheBg');
+    // Cas YouTube.
+    const ytId = parseYouTubeId(node.bgYtUrl);
+    if (ytId) {
+      return this._pushYouTube(node.id, ytId, true, 'cartoucheBg');
+    }
+    if (node.bgYtUrl) {
+      throw new Error(`URL YouTube de fond invalide pour « ${node.title} »`);
+    }
+    throw new Error(`Aucun fond attaché à « ${node.title} »`);
+  }
+
+  /**
+   * Applique un fade-out (vers silence) ou cut sur une couche
+   * existante, quel que soit le backend. Utilisé pour mettre en
+   * sourdine le sommet précédent au push, et pour le pop d'une couche.
+   */
+  private _fadeOutSilence(layer: AudioLayer, tr: Transitions): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (layer.backend === 'webaudio') {
+      layer.gain.gain.cancelScheduledValues(now);
+      layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
+      if (tr.type === 'cut') {
+        layer.gain.gain.setValueAtTime(0, now);
+      } else {
+        layer.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
+      }
+    } else {
+      layer.currentRamp?.cancel();
+      const fromVol = (() => {
+        try {
+          return layer.player.getVolume();
+        } catch {
+          return 100;
+        }
+      })();
+      if (tr.type === 'cut') {
+        try {
+          layer.player.setVolume(0);
+        } catch {
+          /* ignore */
+        }
+      } else {
+        layer.currentRamp = rampYTVolume(layer.player, fromVol, 0, tr.durationSec * 1000);
+      }
+    }
+  }
+
+  /**
+   * Restaure une couche au plein volume après un pop. Utilisé pour
+   * `resumeUnderlying`. Sémantique des modes identique au push :
+   * - cut       : 1 immédiat
+   * - crossfade : 0→1 simultané au fade-out de la couche pop
+   * - fade      : reste à 0 pendant le fade-out, puis 0→1 séquentiel
+   */
+  private _fadeInResume(layer: AudioLayer, tr: Transitions): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (layer.backend === 'webaudio') {
+      layer.gain.gain.cancelScheduledValues(now);
+      layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
+      if (tr.type === 'cut') {
+        layer.gain.gain.setValueAtTime(1, now);
+      } else if (tr.type === 'fade') {
+        layer.gain.gain.setValueAtTime(0, now + tr.durationSec);
+        layer.gain.gain.linearRampToValueAtTime(1, now + 2 * tr.durationSec);
+      } else {
+        layer.gain.gain.linearRampToValueAtTime(1, now + tr.durationSec);
+      }
+    } else {
+      layer.currentRamp?.cancel();
+      const durMs = tr.durationSec * 1000;
+      if (tr.type === 'cut') {
+        try {
+          layer.player.setVolume(100);
+        } catch {
+          /* ignore */
+        }
+      } else if (tr.type === 'fade') {
+        // Reste à 0 pendant la durMs, puis ramp 0→100 pendant durMs.
+        setTimeout(() => {
+          const stillThere = this.stack.includes(layer);
+          if (!stillThere) return;
+          layer.currentRamp = rampYTVolume(layer.player, 0, 100, durMs);
+        }, durMs);
+      } else {
+        const fromVol = (() => {
+          try {
+            return layer.player.getVolume();
+          } catch {
+            return 0;
+          }
+        })();
+        layer.currentRamp = rampYTVolume(layer.player, fromVol, 100, durMs);
+      }
+    }
   }
 
   /**
@@ -366,13 +606,7 @@ class AudioEngine {
     const previousTop = this.stack[this.stack.length - 1];
 
     if (previousTop) {
-      previousTop.gain.gain.cancelScheduledValues(now);
-      previousTop.gain.gain.setValueAtTime(previousTop.gain.gain.value, now);
-      if (tr.type === 'cut') {
-        previousTop.gain.gain.setValueAtTime(0, now);
-      } else {
-        previousTop.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
-      }
+      this._fadeOutSilence(previousTop, tr);
     }
 
     // Démarrage : 'fade' attend la fin du fade-out, sinon démarre à `now`.
@@ -398,7 +632,8 @@ class AudioEngine {
     source.connect(gain);
 
     const layerId = crypto.randomUUID();
-    const layer: AudioLayer = {
+    const layer: WebAudioLayer = {
+      backend: 'webaudio',
       id: layerId,
       nodeId: node.id,
       kind: 'cartoucheBg',
@@ -426,7 +661,7 @@ class AudioEngine {
   private async _onPlaylistTrackEnded(layerId: string): Promise<void> {
     // Re-cherche le layer : il a pu être pop entre temps.
     const layer = this.stack.find((l) => l.id === layerId);
-    if (!layer || !layer.playlist || !this.ctx) return;
+    if (!layer || layer.backend !== 'webaudio' || !layer.playlist || !this.ctx) return;
 
     const ctx = this.ctx;
     const playlist = layer.playlist;
@@ -495,16 +730,14 @@ class AudioEngine {
   popLayerByNodeId(nodeId: NodeId): void {
     const idx = this.indexInStackByNodeId(nodeId);
     if (idx === -1) return;
-    if (!this.ctx) return;
-    const ctx = this.ctx;
     const wasTop = idx === this.stack.length - 1;
     const layer = this.stack[idx];
 
     // Sauvegarde de la position pour reprise (jalon 15) — uniquement
-    // pour les playlists. Pour les morceaux uniques, on retombe au
-    // début à la ré-entrée (comportement précédent inchangé).
-    if (layer.playlist) {
-      const offset = ctx.currentTime - layer.playlist.trackStartedAtAudioTime;
+    // pour les playlists Web Audio. Pour les morceaux uniques (Web
+    // Audio ou YouTube) on retombe au début à la ré-entrée.
+    if (layer.backend === 'webaudio' && layer.playlist && this.ctx) {
+      const offset = this.ctx.currentTime - layer.playlist.trackStartedAtAudioTime;
       this.playlistResume.set(layer.nodeId, {
         trackIndex: layer.playlist.currentIndex,
         // Clamp à 0 : si le pop arrive avant que la lecture ait
@@ -515,16 +748,9 @@ class AudioEngine {
     }
 
     const tr = this.transitions;
-    const now = ctx.currentTime;
 
-    // Sortie du layer pop : cut net ou fade-out vers 0.
-    layer.gain.gain.cancelScheduledValues(now);
-    layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
-    if (tr.type === 'cut') {
-      layer.gain.gain.setValueAtTime(0, now);
-    } else {
-      layer.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
-    }
+    // Sortie du layer pop : cut net ou fade-out vers 0 (selon backend).
+    this._fadeOutSilence(layer, tr);
 
     // Tear-down après le fondu (50 ms en cut, sinon durée + 50 ms).
     const teardownDelay = tr.type === 'cut' ? 50 : tr.durationSec * 1000 + 50;
@@ -537,60 +763,93 @@ class AudioEngine {
     if (wasTop && tr.resumeUnderlying) {
       const newTop = this.stack[this.stack.length - 1];
       if (newTop) {
-        newTop.gain.gain.cancelScheduledValues(now);
-        newTop.gain.gain.setValueAtTime(newTop.gain.gain.value, now);
-        if (tr.type === 'cut') {
-          newTop.gain.gain.setValueAtTime(1, now);
-        } else if (tr.type === 'fade') {
-          // Séquentiel : reste à 0 pendant le fade-out, fade-in après.
-          newTop.gain.gain.setValueAtTime(0, now + tr.durationSec);
-          newTop.gain.gain.linearRampToValueAtTime(1, now + 2 * tr.durationSec);
-        } else {
-          // Crossfade : simultané au fade-out du layer pop.
-          newTop.gain.gain.linearRampToValueAtTime(1, now + tr.durationSec);
-        }
+        this._fadeInResume(newTop, tr);
       }
     }
   }
 
   /**
    * Joue un stinger sur le canal dédié. Coupe le précédent stinger
-   * s'il y en a un, ne touche pas à la pile principale.
-   * Le stinger ne boucle jamais (cf. cahier — "Court, ne boucle pas").
+   * s'il y en a un, ne touche pas à la pile principale. Le stinger
+   * ne boucle jamais (cf. cahier — "Court, ne boucle pas").
+   *
+   * Supporte les deux backends (jalon 17) : Web Audio si
+   * `localFilePath`, sinon YouTube si `ytUrl` valide.
    */
   async playStinger(node: AudioNode): Promise<void> {
-    if (!node.localFilePath) {
-      throw new Error(`Aucun fichier local attaché à « ${node.title} »`);
-    }
-    const ctx = await this.ensureContext();
-    const buffer = await this.loadBuffer(node.localFilePath);
+    if (node.localFilePath) {
+      const ctx = await this.ensureContext();
+      const buffer = await this.loadBuffer(node.localFilePath);
 
-    // Stoppe le stinger précédent.
-    if (this.stinger) {
-      this.tearDown(this.stinger);
-      this.stinger = null;
-    }
-
-    const { source, gain } = this.createLayerNodes(ctx, buffer, false, 1);
-    source.start(ctx.currentTime);
-
-    const layer: AudioLayer = {
-      id: crypto.randomUUID(),
-      nodeId: node.id,
-      kind: 'stinger',
-      source,
-      gain,
-      startedAt: performance.now(),
-    };
-    this.stinger = layer;
-
-    // Auto-clear quand le stinger termine.
-    source.onended = () => {
-      if (this.stinger?.id === layer.id) {
-        this.tearDown(layer);
+      // Stoppe le stinger précédent.
+      if (this.stinger) {
+        this.tearDown(this.stinger);
         this.stinger = null;
       }
-    };
+
+      const { source, gain } = this.createLayerNodes(ctx, buffer, false, 1);
+      source.start(ctx.currentTime);
+
+      const layer: WebAudioLayer = {
+        backend: 'webaudio',
+        id: crypto.randomUUID(),
+        nodeId: node.id,
+        kind: 'stinger',
+        source,
+        gain,
+        startedAt: performance.now(),
+      };
+      this.stinger = layer;
+
+      // Auto-clear quand le stinger termine.
+      source.onended = () => {
+        if (this.stinger?.id === layer.id) {
+          this.tearDown(layer);
+          this.stinger = null;
+        }
+      };
+      return;
+    }
+
+    const ytId = parseYouTubeId(node.ytUrl);
+    if (ytId) {
+      // Stoppe le stinger précédent avant de créer le nouveau.
+      if (this.stinger) {
+        this.tearDown(this.stinger);
+        this.stinger = null;
+      }
+      const layerId = crypto.randomUUID();
+      const player = await createYTPlayer(ytId, {
+        onEnded: () => {
+          if (this.stinger?.id === layerId) {
+            this.tearDown(this.stinger);
+            this.stinger = null;
+          }
+        },
+      });
+      try {
+        player.setVolume(100);
+        player.playVideo();
+      } catch {
+        /* ignore */
+      }
+      const layer: YouTubeLayer = {
+        backend: 'youtube',
+        id: layerId,
+        nodeId: node.id,
+        kind: 'stinger',
+        player,
+        loop: false, // jamais de boucle pour un stinger
+        startedAt: performance.now(),
+      };
+      this.stinger = layer;
+      return;
+    }
+
+    if (node.ytUrl) {
+      throw new Error(`URL YouTube invalide pour « ${node.title} »`);
+    }
+    throw new Error(`Aucun fichier ni URL YouTube attaché à « ${node.title} »`);
   }
 
   /**
@@ -613,27 +872,44 @@ class AudioEngine {
 
   /**
    * Diminue progressivement le volume de tous les canaux puis arrête.
-   * Utile en partie pour faire silence sans coupure brutale.
+   * Utile en partie pour faire silence sans coupure brutale. Couvre
+   * Web Audio (rampe sur `gain`) et YouTube (animation `setVolume`).
    */
   fadeOut(durationSec: number = FADE_OUT_DEFAULT_SEC): void {
-    if (!this.ctx) {
+    const durMs = durationSec * 1000;
+    const fadeOne = (layer: AudioLayer): void => {
+      if (layer.backend === 'webaudio') {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        layer.gain.gain.cancelScheduledValues(now);
+        layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
+        layer.gain.gain.linearRampToValueAtTime(0, now + durationSec);
+      } else {
+        layer.currentRamp?.cancel();
+        const fromVol = (() => {
+          try {
+            return layer.player.getVolume();
+          } catch {
+            return 100;
+          }
+        })();
+        layer.currentRamp = rampYTVolume(layer.player, fromVol, 0, durMs);
+      }
+    };
+
+    if (!this.ctx && this.stack.every((l) => l.backend === 'webaudio')) {
+      // Aucun AudioContext et que du Web Audio → rien à faire d'utile.
       this.stopAll();
       return;
     }
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const target = now + durationSec;
+
     for (const layer of this.stack) {
-      layer.gain.gain.cancelScheduledValues(now);
-      layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
-      layer.gain.gain.linearRampToValueAtTime(0, target);
+      fadeOne(layer);
     }
     if (this.stinger) {
-      this.stinger.gain.gain.cancelScheduledValues(now);
-      this.stinger.gain.gain.setValueAtTime(this.stinger.gain.gain.value, now);
-      this.stinger.gain.gain.linearRampToValueAtTime(0, target);
+      fadeOne(this.stinger);
     }
-    setTimeout(() => this.stopAll(), durationSec * 1000 + 100);
+    setTimeout(() => this.stopAll(), durMs + 100);
   }
 }
 

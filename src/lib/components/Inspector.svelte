@@ -46,30 +46,19 @@
   let { onToast }: Props = $props();
 
   function handleTest(node: AudioNode): void {
-    if (!node.localFilePath) {
-      // Différencie : URL YouTube présente mais non encore supportée vs vraiment vide
-      if (node.ytUrl) {
-        onToast(t('toast.triggerYoutubeNotYet', { title: node.title }));
-      } else {
-        onToast(t('toast.triggerNoFile', { title: node.title }));
-      }
-      return;
-    }
-    if (node.type === 'stinger') {
-      engine
-        .playStinger(node)
-        .then(() => onToast(t('toast.audioStinger', { title: node.title })))
-        .catch((e) =>
-          onToast(t('toast.audioError', { msg: e instanceof Error ? e.message : String(e) })),
-        );
-    } else {
-      engine
-        .pushLayer(node, node.type)
-        .then(() => onToast(t('toast.audioPushed', { title: node.title })))
-        .catch((e) =>
-          onToast(t('toast.audioError', { msg: e instanceof Error ? e.message : String(e) })),
-        );
-    }
+    // Le moteur (jalon 17) aiguille vers Web Audio ou YouTube selon
+    // ce qui est attaché. Si rien n'est attaché, pushLayer/playStinger
+    // throw avec un message explicite — capté par le .catch.
+    const promise =
+      node.type === 'stinger'
+        ? engine.playStinger(node)
+        : engine.pushLayer(node, node.type);
+    const okKey = node.type === 'stinger' ? 'toast.audioStinger' : 'toast.audioPushed';
+    promise
+      .then(() => onToast(t(okKey, { title: node.title })))
+      .catch((e) =>
+        onToast(t('toast.audioError', { msg: e instanceof Error ? e.message : String(e) })),
+      );
   }
 
   function handleStopOne(node: AudioNode): void {
