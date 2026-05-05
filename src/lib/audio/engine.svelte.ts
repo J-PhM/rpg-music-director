@@ -9,9 +9,9 @@
  * - Un **canal Tada** séparé : les stingers se jouent par-dessus la
  *   pile sans la masquer, et ne se relancent pas en boucle.
  *
- * Transitions : un fondu linéaire de 1 s pour les push/pop. Les
- * options par scénario (fade / cut / crossfade, durée) sont prévues
- * pour le jalon 16.
+ * Transitions : `cut` / `fade` (séquentiel) / `crossfade` (simultané),
+ * durée 0.5–5 s, configurées par scénario. Voir `transitions` plus bas
+ * et la section Settings (jalon 16).
  *
  * Boucles : sample-perfect via AudioBufferSourceNode (loop=true).
  * Coût : RAM = taille décodée du fichier. Acceptable pour des
