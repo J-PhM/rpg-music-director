@@ -14,11 +14,13 @@
    * sélectionné, ce qui justifie une perte de focus).
    */
 
-  import { isCartouche, isAudioNode, type AudioNode, type CartoucheNode } from '$lib/model/types';
+  import { isCartouche, isAudioNode, type AudioNode, type CartoucheNode, type NodeId } from '$lib/model/types';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { t } from '$lib/i18n/i18n.svelte';
   import { engine } from '$lib/audio/engine.svelte';
   import { history } from '$lib/history/history.svelte';
+  import { isTauriContext, pickAudioFiles } from '$lib/io/scenarioFile';
+  import { titleFromPath } from '$lib/io/dragDrop';
 
   // === Snapshot par session d'édition (jalon 12) ===
   // Une "session" = entre focus et blur d'un champ. Un snapshot est
@@ -72,6 +74,38 @@
 
   function handleStopOne(node: AudioNode): void {
     engine.popLayerByNodeId(node.id);
+  }
+
+  // === Actions playlist fleuve (jalon 15) ===
+  // Pattern undo : on capture un snapshot AVANT la mutation et on
+  // l'empile via pushExplicit APRÈS. Ouvrir le dialog Tauri perd le
+  // focus de l'éventuel champ en édition — pas de risque de double
+  // snapshot car les boutons ne sont pas dans le flot focus/blur.
+  function addTracks(cartoucheId: NodeId): void {
+    if (!isTauriContext()) return; // Bouton désactivé en preview, garde-fou.
+    const snap = history.currentSnapshot();
+    pickAudioFiles()
+      .then((paths) => {
+        if (paths.length === 0) return;
+        store.addBgPlaylistTracks(cartoucheId, paths);
+        history.pushExplicit(snap, 'Ajout morceaux playlist');
+        onToast(t('toast.tracksAdded', { n: paths.length }));
+      })
+      .catch((e) => {
+        onToast(t('toast.audioError', { msg: e instanceof Error ? e.message : String(e) }));
+      });
+  }
+
+  function moveTrack(cartoucheId: NodeId, from: number, to: number): void {
+    const snap = history.currentSnapshot();
+    store.reorderBgPlaylistTrack(cartoucheId, from, to);
+    history.pushExplicit(snap, 'Réordonner playlist');
+  }
+
+  function removeTrack(cartoucheId: NodeId, index: number): void {
+    const snap = history.currentSnapshot();
+    store.removeBgPlaylistTrack(cartoucheId, index);
+    history.pushExplicit(snap, 'Retirer morceau playlist');
   }
 
   // Type narrowing — selectedNode est NodeUnion, on récupère des
@@ -215,6 +249,58 @@
         <option value="single">{t('inspector.fields.bgPlaylistMode.single')}</option>
         <option value="sequential">{t('inspector.fields.bgPlaylistMode.sequential')}</option>
       </select>
+
+      {#if node.bgPlaylistMode === 'sequential'}
+        <p class="playlist-hint">{t('inspector.bg.playlist.hint')}</p>
+
+        {#if node.bgPlaylistIds.length === 0}
+          <p class="playlist-empty">{t('inspector.bg.playlist.empty')}</p>
+        {:else}
+          <ol class="playlist">
+            {#each node.bgPlaylistIds as path, i}
+              <li class="playlist-item">
+                <span class="playlist-index">{i + 1}.</span>
+                <span class="playlist-track">
+                  <span class="playlist-title">{titleFromPath(path, 50)}</span>
+                  <span class="playlist-path">{path}</span>
+                </span>
+                <span class="playlist-actions">
+                  <button
+                    type="button"
+                    class="micro-btn"
+                    title={t('inspector.bg.playlist.upTooltip')}
+                    aria-label={t('inspector.bg.playlist.upTooltip')}
+                    disabled={i === 0}
+                    onclick={() => moveTrack(node.id, i, i - 1)}
+                  >{t('inspector.bg.playlist.up')}</button>
+                  <button
+                    type="button"
+                    class="micro-btn"
+                    title={t('inspector.bg.playlist.downTooltip')}
+                    aria-label={t('inspector.bg.playlist.downTooltip')}
+                    disabled={i === node.bgPlaylistIds.length - 1}
+                    onclick={() => moveTrack(node.id, i, i + 1)}
+                  >{t('inspector.bg.playlist.down')}</button>
+                  <button
+                    type="button"
+                    class="micro-btn danger"
+                    title={t('inspector.bg.playlist.removeTooltip')}
+                    aria-label={t('inspector.bg.playlist.removeTooltip')}
+                    onclick={() => removeTrack(node.id, i)}
+                  >{t('inspector.bg.playlist.remove')}</button>
+                </span>
+              </li>
+            {/each}
+          </ol>
+        {/if}
+
+        <button
+          type="button"
+          class="btn add-track-btn"
+          disabled={!isTauriContext()}
+          onclick={() => addTracks(node.id)}
+        >{t('inspector.bg.playlist.add')}</button>
+      {/if}
     </fieldset>
 
     <label class="label" for="i-notes">{t('inspector.fields.notes')}</label>
@@ -385,5 +471,111 @@
     color: var(--ink-soft);
     font-style: italic;
     line-height: 1.45;
+  }
+
+  /* Playlist fleuve (jalon 15) */
+  .playlist-hint {
+    margin: 14px 0 8px;
+    font-size: 11px;
+    color: var(--ink-soft);
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .playlist-empty {
+    margin: 0 0 10px;
+    padding: 12px;
+    text-align: center;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--ink-soft);
+    border: 1px dashed var(--rule-soft);
+    border-radius: 2px;
+  }
+  .playlist {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    border: 1px solid var(--rule-soft);
+    border-radius: 2px;
+    background: var(--paper-soft);
+  }
+  .playlist-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .playlist-item:last-child {
+    border-bottom: none;
+  }
+  .playlist-index {
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    flex-shrink: 0;
+    min-width: 22px;
+    padding-top: 1px;
+  }
+  .playlist-track {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .playlist-title {
+    color: var(--ink);
+    font-size: 13px;
+    font-style: italic;
+    word-break: break-word;
+    line-height: 1.3;
+  }
+  .playlist-path {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-soft);
+    word-break: break-all;
+    line-height: 1.3;
+  }
+  .playlist-actions {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .micro-btn {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    cursor: pointer;
+    padding: 2px 7px;
+    font-size: 12px;
+    border-radius: 2px;
+    font-family: inherit;
+    line-height: 1.4;
+    transition:
+      background 150ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      border-color 150ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      color 150ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  .micro-btn:hover:not(:disabled) {
+    background: var(--paper-deep);
+    border-color: var(--ink-soft);
+  }
+  .micro-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .micro-btn.danger:hover:not(:disabled) {
+    background: var(--warm);
+    border-color: var(--warm);
+    color: var(--paper);
+  }
+  .add-track-btn {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    text-align: center;
+    font-size: 13px;
   }
 </style>

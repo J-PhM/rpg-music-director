@@ -102,6 +102,28 @@ export async function pickImage(): Promise<string | null> {
 }
 
 /**
+ * Affiche le dialogue système de sélection de fichier(s) audio.
+ * Renvoie un tableau de chemins absolus (vide si annulé). Utilisé
+ * par l'inspecteur cartouche pour ajouter des morceaux à la
+ * playlist fleuve (jalon 15).
+ *
+ * Sélection multiple par défaut — un MJ qui ajoute une BO de film
+ * veut probablement tout glisser d'un coup.
+ */
+export async function pickAudioFiles(multiple = true): Promise<string[]> {
+  const selected = await openDialog({
+    multiple,
+    filters: [
+      { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'oga', 'flac', 'm4a', 'aac', 'opus', 'webm'] },
+      { name: 'Tous les fichiers', extensions: ['*'] },
+    ],
+    title: 'Choisir des morceaux',
+  });
+  if (!selected) return [];
+  return Array.isArray(selected) ? selected : [selected];
+}
+
+/**
  * Détecte si on tourne dans une fenêtre Tauri (par opposition au preview
  * navigateur seul). Utile pour adapter les boutons : dans le navigateur,
  * on désactive Ouvrir/Enregistrer plutôt que de laisser une erreur sortir.

@@ -283,6 +283,10 @@ class ScenarioStore {
    * qui n'était pas dans l'ancien, on push son bg ; pour chaque
    * cartouche de l'ancien chemin absent du nouveau, on pop son bg.
    *
+   * Un fond est considéré comme « disponible » si :
+   *  - mode 'single' avec `bgLocalFilePath` défini, ou
+   *  - mode 'sequential' avec une playlist non vide.
+   *
    * Tolère le cas où un cartouche n'a pas de bg (rien à faire).
    * Échoue silencieusement si l'autoplay policy bloque le premier push
    * (avant la première interaction utilisateur).
@@ -291,12 +295,18 @@ class ScenarioStore {
     const newSet = new Set(newPath);
     const oldSet = new Set(oldPath);
 
+    const hasBg = (n: Node): boolean => {
+      if (!isCartouche(n)) return false;
+      if (n.bgPlaylistMode === 'sequential' && n.bgPlaylistIds.length > 0) return true;
+      return !!n.bgLocalFilePath;
+    };
+
     // Retire d'abord les bg des cartouches qu'on quitte (deepest first).
     for (let i = oldPath.length - 1; i >= 0; i--) {
       const id = oldPath[i];
       if (newSet.has(id)) continue;
       const cartouche = this.scenario.nodes.find((n) => n.id === id);
-      if (cartouche && isCartouche(cartouche) && cartouche.bgLocalFilePath) {
+      if (cartouche && hasBg(cartouche)) {
         engine.popLayerByNodeId(id);
       }
     }
@@ -305,7 +315,7 @@ class ScenarioStore {
     for (const id of newPath) {
       if (oldSet.has(id)) continue;
       const cartouche = this.scenario.nodes.find((n) => n.id === id);
-      if (cartouche && isCartouche(cartouche) && cartouche.bgLocalFilePath) {
+      if (cartouche && isCartouche(cartouche) && hasBg(cartouche)) {
         engine.pushCartoucheBg(cartouche).catch(() => {
           // Échec silencieux : autoplay policy ou fichier introuvable.
           // Le toast d'erreur reste optionnel ici pour ne pas perturber
@@ -397,6 +407,47 @@ class ScenarioStore {
     node.bgLocalFilePath = path;
     node.bgYtUrl = '';
     return true;
+  }
+
+  // ============================================================
+  // Actions — playlist fleuve (jalon 15)
+  // ============================================================
+
+  /** Bascule entre 'single' et 'sequential' pour le bg d'un cartouche. */
+  setBgPlaylistMode(cartoucheId: NodeId, mode: 'single' | 'sequential'): void {
+    const node = this.scenario.nodes.find((n) => n.id === cartoucheId);
+    if (!node || node.type !== 'cartouche') return;
+    node.bgPlaylistMode = mode;
+  }
+
+  /** Ajoute un (ou plusieurs) morceau à la playlist d'un cartouche. */
+  addBgPlaylistTracks(cartoucheId: NodeId, paths: string[]): void {
+    const node = this.scenario.nodes.find((n) => n.id === cartoucheId);
+    if (!node || node.type !== 'cartouche') return;
+    node.bgPlaylistIds = [...node.bgPlaylistIds, ...paths];
+  }
+
+  /** Retire le morceau à l'index donné de la playlist. */
+  removeBgPlaylistTrack(cartoucheId: NodeId, index: number): void {
+    const node = this.scenario.nodes.find((n) => n.id === cartoucheId);
+    if (!node || node.type !== 'cartouche') return;
+    if (index < 0 || index >= node.bgPlaylistIds.length) return;
+    node.bgPlaylistIds = node.bgPlaylistIds.filter((_, i) => i !== index);
+  }
+
+  /**
+   * Déplace le morceau à `from` vers la position `to`. Utilisé par
+   * les boutons up/down de l'inspecteur.
+   */
+  reorderBgPlaylistTrack(cartoucheId: NodeId, from: number, to: number): void {
+    const node = this.scenario.nodes.find((n) => n.id === cartoucheId);
+    if (!node || node.type !== 'cartouche') return;
+    const list = node.bgPlaylistIds;
+    if (from < 0 || from >= list.length || to < 0 || to >= list.length || from === to) return;
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    node.bgPlaylistIds = next;
   }
 
   /**

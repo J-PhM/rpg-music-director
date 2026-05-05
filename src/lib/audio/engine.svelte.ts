@@ -32,6 +32,19 @@ const DEFAULT_FADE = 1.0;
 const FADE_OUT_DEFAULT_SEC = 2.5;
 
 /**
+ * État de lecture d'une playlist fleuve (jalon 15).
+ * `source` est remplacée à chaque changement de morceau ; le `gain`
+ * reste le même tout au long, donc la sourdine de la pile fonctionne
+ * uniformément.
+ */
+export interface PlaylistState {
+  paths: string[];
+  currentIndex: number;
+  /** Temps AudioContext (en secondes) au démarrage du morceau actuel. */
+  trackStartedAtAudioTime: number;
+}
+
+/**
  * Une couche active dans la pile (ou le canal Tada).
  * `source` et `gain` sont les nœuds Web Audio gérés par le moteur.
  */
@@ -46,6 +59,8 @@ export interface AudioLayer {
   gain: GainNode;
   /** Timestamp `performance.now()` au démarrage, pour info / debug. */
   startedAt: number;
+  /** Si défini, c'est une playlist fleuve : enchaînement automatique. */
+  playlist?: PlaylistState;
 }
 
 class AudioEngine {
@@ -246,14 +261,172 @@ class AudioEngine {
   }
 
   /**
-   * Empile la musique de fond d'un cartouche (jalon 10). Toujours en
-   * boucle. Utilise `bgLocalFilePath` comme source.
+   * Empile la musique de fond d'un cartouche (jalon 10). Détecte
+   * automatiquement le mode :
+   * - `bgPlaylistMode === 'sequential'` ET liste non vide → playlist fleuve.
+   * - sinon → fichier unique en boucle.
+   *
+   * Pour la playlist fleuve : si on a une position mémorisée pour
+   * ce cartouche (sortie + ré-entrée plus tard), on reprend
+   * exactement où on en était (cf. cahier "Tracking de position").
    */
   async pushCartoucheBg(node: CartoucheNode): Promise<void> {
+    // Cas playlist fleuve
+    if (node.bgPlaylistMode === 'sequential' && node.bgPlaylistIds.length > 0) {
+      return this._pushPlaylist(node);
+    }
+    // Cas fichier unique (rétro-compatible)
     if (!node.bgLocalFilePath) {
       throw new Error(`Aucun fond local attaché à « ${node.title} »`);
     }
     return this._pushInternal(node.id, node.bgLocalFilePath, true, 'cartoucheBg');
+  }
+
+  /**
+   * Map des positions de reprise par cartoucheId. Quand on quitte
+   * une cartouche dont la playlist tournait, on note l'index du
+   * morceau et l'offset interne ; à la ré-entrée on reprend ici.
+   * Réinitialisé par `stopAll`.
+   */
+  private playlistResume = new Map<NodeId, { trackIndex: number; offsetInTrack: number }>();
+
+  /**
+   * Cœur du push playlist. Crée le gain partagé, lance le morceau
+   * de reprise (ou le premier si aucune reprise), branche le
+   * onended pour enchaîner.
+   */
+  private async _pushPlaylist(node: CartoucheNode): Promise<void> {
+    const ctx = await this.ensureContext();
+
+    // Calcule l'index et l'offset de reprise.
+    const resume = this.playlistResume.get(node.id);
+    let startIndex = 0;
+    let startOffset = 0;
+    if (resume && resume.trackIndex < node.bgPlaylistIds.length) {
+      startIndex = resume.trackIndex;
+      startOffset = Math.max(0, resume.offsetInTrack);
+    }
+
+    // Charge le buffer du morceau de départ.
+    const buffer = await this.loadBuffer(node.bgPlaylistIds[startIndex]);
+    // Si l'offset dépasse la durée, on repart au début du morceau.
+    if (startOffset >= buffer.duration) startOffset = 0;
+
+    // Déduplication / mise en sourdine du sommet (même logique que _pushInternal).
+    const existingIdx = this.indexInStackByNodeId(node.id);
+    if (existingIdx !== -1) {
+      const old = this.stack[existingIdx];
+      this.tearDown(old);
+      this.stack.splice(existingIdx, 1);
+    }
+    const previousTop = this.stack[this.stack.length - 1];
+    if (previousTop) {
+      const now = ctx.currentTime;
+      previousTop.gain.gain.cancelScheduledValues(now);
+      previousTop.gain.gain.setValueAtTime(previousTop.gain.gain.value, now);
+      previousTop.gain.gain.linearRampToValueAtTime(0, now + DEFAULT_FADE);
+    }
+
+    // Crée le gain partagé (la source change à chaque morceau, le
+    // gain reste — c'est lui qui est géré par la pile pour la
+    // sourdine et le fade).
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    const now = ctx.currentTime;
+    gain.gain.linearRampToValueAtTime(1, now + DEFAULT_FADE);
+    gain.connect(ctx.destination);
+
+    // Première source. Loop=false individuellement : c'est l'engine
+    // qui ré-enchaîne sur le suivant à la fin (ou repart au début
+    // de la playlist si on est au dernier).
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = false;
+    source.connect(gain);
+
+    const layerId = crypto.randomUUID();
+    const layer: AudioLayer = {
+      id: layerId,
+      nodeId: node.id,
+      kind: 'cartoucheBg',
+      source,
+      gain,
+      startedAt: performance.now(),
+      playlist: {
+        paths: [...node.bgPlaylistIds],
+        currentIndex: startIndex,
+        trackStartedAtAudioTime: now - startOffset, // recule virtuellement le départ pour que ctx.currentTime - trackStarted = startOffset
+      },
+    };
+    source.onended = () => this._onPlaylistTrackEnded(layerId);
+    source.start(now, startOffset);
+    this.stack.push(layer);
+  }
+
+  /**
+   * Avance une playlist au morceau suivant (ou retour au début si
+   * on était au dernier — la playlist boucle entière, cf. cahier).
+   */
+  private async _onPlaylistTrackEnded(layerId: string): Promise<void> {
+    // Re-cherche le layer : il a pu être pop entre temps.
+    const layer = this.stack.find((l) => l.id === layerId);
+    if (!layer || !layer.playlist || !this.ctx) return;
+
+    const ctx = this.ctx;
+    const playlist = layer.playlist;
+    const nextIndex = (playlist.currentIndex + 1) % playlist.paths.length;
+    let buffer: AudioBuffer;
+    // Index réellement chargé : nextIndex sur le chemin nominal,
+    // ou un index de fallback si le morceau suivant est introuvable.
+    let actualIndex = nextIndex;
+    try {
+      buffer = await this.loadBuffer(playlist.paths[nextIndex]);
+    } catch {
+      // Morceau introuvable : on tente le suivant pour ne pas bloquer.
+      // Garde-fou : si aucun morceau ne charge, on stoppe (1 tour de
+      // boucle max).
+      let attempts = 0;
+      let candidate = nextIndex;
+      let candidateBuffer: AudioBuffer | null = null;
+      while (attempts < playlist.paths.length) {
+        candidate = (candidate + 1) % playlist.paths.length;
+        attempts++;
+        try {
+          candidateBuffer = await this.loadBuffer(playlist.paths[candidate]);
+          break;
+        } catch {
+          /* try next */
+        }
+      }
+      if (!candidateBuffer) {
+        // Toute la playlist est cassée — on coupe la couche proprement.
+        this.tearDown(layer);
+        const idx = this.stack.findIndex((l) => l.id === layerId);
+        if (idx !== -1) this.stack.splice(idx, 1);
+        return;
+      }
+      buffer = candidateBuffer;
+      actualIndex = candidate;
+    }
+
+    // Déconnecte l'ancienne source (déjà finie de toute façon).
+    try {
+      layer.source.disconnect();
+    } catch {
+      /* ignore */
+    }
+
+    // Crée la nouvelle source connectée au même gain (préserve le
+    // niveau et les fondus).
+    const newSource = ctx.createBufferSource();
+    newSource.buffer = buffer;
+    newSource.loop = false;
+    newSource.connect(layer.gain);
+    newSource.onended = () => this._onPlaylistTrackEnded(layerId);
+    layer.source = newSource;
+    playlist.currentIndex = actualIndex;
+    playlist.trackStartedAtAudioTime = ctx.currentTime;
+    newSource.start(ctx.currentTime);
   }
 
   /**
@@ -270,6 +443,17 @@ class AudioEngine {
     const ctx = this.ctx;
     const wasTop = idx === this.stack.length - 1;
     const layer = this.stack[idx];
+
+    // Sauvegarde de la position pour reprise (jalon 15) — uniquement
+    // pour les playlists. Pour les morceaux uniques, on retombe au
+    // début à la ré-entrée (comportement précédent inchangé).
+    if (layer.playlist) {
+      const offset = ctx.currentTime - layer.playlist.trackStartedAtAudioTime;
+      this.playlistResume.set(layer.nodeId, {
+        trackIndex: layer.playlist.currentIndex,
+        offsetInTrack: offset,
+      });
+    }
 
     const now = ctx.currentTime;
     layer.gain.gain.cancelScheduledValues(now);
@@ -334,6 +518,8 @@ class AudioEngine {
   /**
    * Arrête immédiatement tout : pile + stinger. Pas de fondu.
    * Utilisé par le bouton "Tout arrêter" et en interne après fadeOut.
+   * Réinitialise aussi les positions de reprise des playlists —
+   * "Tout arrêter" remet vraiment à zéro.
    */
   stopAll(): void {
     for (const layer of this.stack) {
@@ -344,6 +530,7 @@ class AudioEngine {
       this.tearDown(this.stinger);
       this.stinger = null;
     }
+    this.playlistResume.clear();
   }
 
   /**
