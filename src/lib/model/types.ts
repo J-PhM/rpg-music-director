@@ -158,11 +158,43 @@ export const DEFAULT_APPEARANCE: Appearance = {
   backgroundOpacity: 12,
 };
 
+/**
+ * Options de transition audio (jalon 16). S'appliquent à tous les
+ * push/pop de la pile principale et du fond de cartouche.
+ *
+ * Sémantique :
+ * - `crossfade` : ancien fade-out + nouveau fade-in **simultanés**,
+ *   sur `durationSec`. C'est le défaut, équivalent au comportement
+ *   livré au jalon 9.
+ * - `fade` : ancien fade-out **puis** nouveau fade-in séquentiels.
+ *   Total = `2 × durationSec`. Crée un léger gap de silence.
+ * - `cut` : pas de rampe, ancien à 0 immédiat, nouveau à 1 immédiat.
+ *
+ * `resumeUnderlying` (au pop) : si vrai, la couche en dessous est
+ * ramenée à plein volume quand on retire le sommet ; si faux, elle
+ * reste muette (le pop est alors un fade-out sec sans relais).
+ */
+export type TransitionType = 'fade' | 'cut' | 'crossfade';
+
+export interface Transitions {
+  type: TransitionType;
+  /** Durée du fondu en secondes. Bornée 0.5–5.0 par l'UI. Ignorée si type === 'cut'. */
+  durationSec: number;
+  resumeUnderlying: boolean;
+}
+
+export const DEFAULT_TRANSITIONS: Transitions = {
+  type: 'crossfade',
+  durationSec: 2,
+  resumeUnderlying: true,
+};
+
 export interface Scenario {
   campaignTitle: string;
   language: Language;
   theme: Theme;
   appearance: Appearance;
+  transitions: Transitions;
   nodes: Node[];
   connections: Connection[];
   viewByCartouche: Record<ViewKey, View>;
@@ -178,6 +210,7 @@ export interface ScenarioFile {
   language: Language;
   theme: Theme;
   appearance: Appearance;
+  transitions: Transitions;
   nodes: Node[];
   connections: Connection[];
   viewByCartouche: Record<ViewKey, View>;

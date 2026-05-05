@@ -12,11 +12,13 @@
 import {
   DEFAULT_APPEARANCE,
   DEFAULT_THEME,
+  DEFAULT_TRANSITIONS,
   type Connection,
   type Node,
   type NodeId,
   type PresetId,
   type Scenario,
+  type TransitionType,
 } from './types';
 
 export class ScenarioValidationError extends Error {
@@ -37,6 +39,9 @@ const VALID_PRESET_IDS = new Set<PresetId>([
   'datapad',
 ]);
 const VALID_BG_MODES = new Set(['single', 'sequential']);
+const VALID_TRANSITION_TYPES = new Set<TransitionType>(['fade', 'cut', 'crossfade']);
+const TRANSITION_DUR_MIN = 0.5;
+const TRANSITION_DUR_MAX = 5;
 
 export interface ValidationResult {
   warnings: string[];
@@ -117,6 +122,28 @@ export function validateScenario(s: unknown): ValidationResult {
     }
     if (typeof a.backgroundOpacity !== 'number' || a.backgroundOpacity < 0 || a.backgroundOpacity > 100) {
       a.backgroundOpacity = DEFAULT_APPEARANCE.backgroundOpacity;
+    }
+  }
+
+  // transitions : ajouté au jalon 16. Migration soft pour les anciens
+  // scénarios qui n'ont pas ce champ, ou champ partiellement valide.
+  if (!scenario.transitions || typeof scenario.transitions !== 'object') {
+    scenario.transitions = { ...DEFAULT_TRANSITIONS };
+  } else {
+    const tr = scenario.transitions as Record<string, unknown>;
+    if (typeof tr.type !== 'string' || !VALID_TRANSITION_TYPES.has(tr.type as TransitionType)) {
+      warnings.push(`Type de transition invalide (${tr.type}), repli sur '${DEFAULT_TRANSITIONS.type}'.`);
+      tr.type = DEFAULT_TRANSITIONS.type;
+    }
+    if (
+      typeof tr.durationSec !== 'number' ||
+      tr.durationSec < TRANSITION_DUR_MIN ||
+      tr.durationSec > TRANSITION_DUR_MAX
+    ) {
+      tr.durationSec = DEFAULT_TRANSITIONS.durationSec;
+    }
+    if (typeof tr.resumeUnderlying !== 'boolean') {
+      tr.resumeUnderlying = DEFAULT_TRANSITIONS.resumeUnderlying;
     }
   }
 

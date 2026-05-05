@@ -9,6 +9,7 @@
 import {
   DEFAULT_APPEARANCE,
   DEFAULT_THEME,
+  DEFAULT_TRANSITIONS,
   type CartoucheNode,
   type CharacterNode,
   type Node,
@@ -105,6 +106,7 @@ export function emptyScenario(campaignTitle = 'Nouvelle campagne'): Scenario {
     language: 'fr',
     theme: { ...DEFAULT_THEME },
     appearance: { ...DEFAULT_APPEARANCE },
+    transitions: { ...DEFAULT_TRANSITIONS },
     nodes: [],
     connections: [],
     viewByCartouche: { root: { scale: 1, panX: 0, panY: 0 } },

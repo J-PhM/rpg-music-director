@@ -19,7 +19,7 @@ import { emptyScenario, nextId } from '$lib/model/defaults';
 import { EXAMPLE_SCENARIO } from '$lib/model/example';
 import { getCartoucheParent } from '$lib/model/navigation';
 import { toJson } from '$lib/model/serialize';
-import { isCartouche, viewKey, type Node, type NodeId, type NodeType, type Scenario, type View } from '$lib/model/types';
+import { isCartouche, viewKey, type Node, type NodeId, type NodeType, type Scenario, type TransitionType, type View } from '$lib/model/types';
 import { setLang } from '$lib/i18n/i18n.svelte';
 import { createNode } from '$lib/model/defaults';
 import { engine } from '$lib/audio/engine.svelte';
@@ -144,6 +144,8 @@ class ScenarioStore {
     setLang(scenario.language);
     // Applique le thème graphique du scénario (jalon 14).
     applyPreset(scenario.theme.preset, scenario.theme.mode);
+    // Applique les options de transition du scénario (jalon 16).
+    engine.setTransitions(scenario.transitions);
     this.ensureCurrentViewExists();
     // L'historique d'annulation est purement en mémoire : un load
     // efface l'historique de la session précédente (cf. cahier).
@@ -540,6 +542,33 @@ class ScenarioStore {
   setTheme(preset: PresetId, mode: ThemeMode): void {
     this.scenario.theme = { preset, mode };
     applyPreset(preset, mode);
+  }
+
+  // ============================================================
+  // Actions — options de transition (jalon 16)
+  // ============================================================
+
+  /**
+   * Change le type de transition (cut / fade / crossfade) et synchronise
+   * le moteur audio. Les couches déjà actives ne sont pas affectées :
+   * seules les transitions à venir adoptent la nouvelle option.
+   */
+  setTransitionType(type: TransitionType): void {
+    this.scenario.transitions.type = type;
+    engine.setTransitions(this.scenario.transitions);
+  }
+
+  /** Change la durée du fondu en secondes (clampée 0.5–5.0). */
+  setTransitionDuration(sec: number): void {
+    const clamped = Math.max(0.5, Math.min(5, sec));
+    this.scenario.transitions.durationSec = clamped;
+    engine.setTransitions(this.scenario.transitions);
+  }
+
+  /** Active ou désactive la reprise sous-jacente au pop. */
+  setResumeUnderlying(resume: boolean): void {
+    this.scenario.transitions.resumeUnderlying = resume;
+    engine.setTransitions(this.scenario.transitions);
   }
 
   // ============================================================

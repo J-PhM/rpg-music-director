@@ -99,6 +99,23 @@ const fr = {
   'settings.lang.en': 'English',
   'settings.lang.hint':
     'La langue est mémorisée dans le scénario. Au chargement d’un fichier partagé, la langue d’affichage suit celle du scénario.',
+  'settings.section.transitions': 'Transitions audio',
+  'settings.transition.type.label': 'Type',
+  'settings.transition.type.fade': 'Fondu',
+  'settings.transition.type.cut': 'Coupure',
+  'settings.transition.type.crossfade': 'Fondu enchaîné',
+  'settings.transition.type.fade.tagline': 'L’ancien s’éteint, puis le nouveau démarre.',
+  'settings.transition.type.cut.tagline': 'Coupure brutale, démarrage immédiat.',
+  'settings.transition.type.crossfade.tagline':
+    'Les deux se chevauchent en sens inverse pendant la durée du fondu.',
+  'settings.transition.duration.label': 'Durée du fondu',
+  'settings.transition.duration.value': '{n} s',
+  'settings.transition.duration.disabled': 'Sans effet en mode coupure.',
+  'settings.transition.resume.label': 'Reprise sous-jacente',
+  'settings.transition.resume.hint':
+    'Quand tu retires une couche, ramener la couche en dessous au volume plein. Désactivé : silence après le pop.',
+  'settings.transition.hint':
+    'Les couches déjà en cours de lecture gardent leur trajectoire. Seules les prochaines transitions appliquent ces options.',
   'settings.toast.bgChanged': 'Fond mis à jour',
   'settings.toast.bgRemoved': 'Fond retiré',
   'settings.toast.bgReset': 'Fond par défaut',
@@ -322,6 +339,23 @@ const en: Partial<Record<DictKey, string>> = {
   'settings.lang.en': 'English',
   'settings.lang.hint':
     'The language is saved with the scenario. When loading a shared file, the display language follows the scenario.',
+  'settings.section.transitions': 'Audio transitions',
+  'settings.transition.type.label': 'Type',
+  'settings.transition.type.fade': 'Fade',
+  'settings.transition.type.cut': 'Cut',
+  'settings.transition.type.crossfade': 'Crossfade',
+  'settings.transition.type.fade.tagline': 'Old layer fades out, then the new one starts.',
+  'settings.transition.type.cut.tagline': 'Hard cut, instant start.',
+  'settings.transition.type.crossfade.tagline':
+    'Both layers overlap in opposite directions during the fade.',
+  'settings.transition.duration.label': 'Fade duration',
+  'settings.transition.duration.value': '{n} s',
+  'settings.transition.duration.disabled': 'No effect in cut mode.',
+  'settings.transition.resume.label': 'Resume underlying layer',
+  'settings.transition.resume.hint':
+    'When you remove a layer, bring the underlying one back to full volume. When off, silence follows the pop.',
+  'settings.transition.hint':
+    'Currently playing layers keep their current trajectory. Only upcoming transitions apply these options.',
   'settings.toast.bgChanged': 'Background updated',
   'settings.toast.bgRemoved': 'Background removed',
   'settings.toast.bgReset': 'Default background restored',

@@ -24,11 +24,19 @@
  * soient réactifs (la PlaybackBar se met à jour en direct).
  */
 
-import type { AudioNode, CartoucheNode, NodeId } from '$lib/model/types';
+import {
+  DEFAULT_TRANSITIONS,
+  type AudioNode,
+  type CartoucheNode,
+  type NodeId,
+  type Transitions,
+} from '$lib/model/types';
 
-/** Durée par défaut des fondus push/pop (en secondes). Configurable jalon 16. */
-const DEFAULT_FADE = 1.0;
-/** Durée par défaut du fade-out global (Tout arrêter doux). */
+/**
+ * Durée par défaut du fade-out global (Tout arrêter doux). Conceptuellement
+ * différent d'une transition de couche : c'est un long fondu de tout ce
+ * qui joue, pas un échange entre deux couches. Reste fixe au jalon 16.
+ */
 const FADE_OUT_DEFAULT_SEC = 2.5;
 
 /**
@@ -76,6 +84,24 @@ class AudioEngine {
    * est joué, le précédent est interrompu.
    */
   stinger = $state<AudioLayer | null>(null);
+
+  /**
+   * Options de transition (jalon 16). Mises à jour par le store à
+   * chaque chargement de scénario et à chaque modification depuis
+   * Settings. Lues à chaque push/pop pour décider du type de fondu
+   * (cut / fade / crossfade), de la durée et du comportement de
+   * reprise sous-jacente.
+   */
+  transitions = $state<Transitions>({ ...DEFAULT_TRANSITIONS });
+
+  /**
+   * Met à jour les options de transition. Les couches déjà actives
+   * gardent leur trajectoire courante : seules les transitions à
+   * venir prennent les nouvelles options.
+   */
+  setTransitions(t: Transitions): void {
+    this.transitions = { ...t };
+  }
 
   /** Sommet de la pile (= ce qu'on entend). */
   topLayer = $derived<AudioLayer | null>(
@@ -218,20 +244,35 @@ class AudioEngine {
       this.stack.splice(existingIdx, 1);
     }
 
-    // Met le sommet courant en sourdine (s'il y en a un).
+    const tr = this.transitions;
+    const now = ctx.currentTime;
     const previousTop = this.stack[this.stack.length - 1];
+
+    // Sortie du sommet précédent : cut net ou fade-out vers 0.
     if (previousTop) {
-      const now = ctx.currentTime;
       previousTop.gain.gain.cancelScheduledValues(now);
       previousTop.gain.gain.setValueAtTime(previousTop.gain.gain.value, now);
-      previousTop.gain.gain.linearRampToValueAtTime(0, now + DEFAULT_FADE);
+      if (tr.type === 'cut') {
+        previousTop.gain.gain.setValueAtTime(0, now);
+      } else {
+        previousTop.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
+      }
     }
 
-    // Démarre la nouvelle couche en fade-in.
-    const { source, gain } = this.createLayerNodes(ctx, buffer, loop, 0);
-    const now = ctx.currentTime;
-    gain.gain.linearRampToValueAtTime(1, now + DEFAULT_FADE);
-    source.start(now);
+    // Démarrage de la nouvelle couche.
+    // - cut       : start à `now`, gain plein immédiat.
+    // - crossfade : start à `now`, fade-in en parallèle du fade-out.
+    // - fade      : start à `now + dur` (séquentiel, après le fade-out),
+    //               fade-in juste après. Évite de consommer le buffer
+    //               pendant la phase de silence intermédiaire.
+    const startAt = tr.type === 'fade' ? now + tr.durationSec : now;
+    const initialGain = tr.type === 'cut' ? 1 : 0;
+    const { source, gain } = this.createLayerNodes(ctx, buffer, loop, initialGain);
+    if (tr.type !== 'cut') {
+      gain.gain.setValueAtTime(0, startAt);
+      gain.gain.linearRampToValueAtTime(1, startAt + tr.durationSec);
+    }
+    source.start(startAt);
 
     const layer: AudioLayer = {
       id: crypto.randomUUID(),
@@ -319,22 +360,34 @@ class AudioEngine {
       this.tearDown(old);
       this.stack.splice(existingIdx, 1);
     }
+
+    const tr = this.transitions;
+    const now = ctx.currentTime;
     const previousTop = this.stack[this.stack.length - 1];
+
     if (previousTop) {
-      const now = ctx.currentTime;
       previousTop.gain.gain.cancelScheduledValues(now);
       previousTop.gain.gain.setValueAtTime(previousTop.gain.gain.value, now);
-      previousTop.gain.gain.linearRampToValueAtTime(0, now + DEFAULT_FADE);
+      if (tr.type === 'cut') {
+        previousTop.gain.gain.setValueAtTime(0, now);
+      } else {
+        previousTop.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
+      }
     }
 
-    // Crée le gain partagé (la source change à chaque morceau, le
-    // gain reste — c'est lui qui est géré par la pile pour la
-    // sourdine et le fade).
+    // Démarrage : 'fade' attend la fin du fade-out, sinon démarre à `now`.
+    const startAt = tr.type === 'fade' ? now + tr.durationSec : now;
+
+    // Gain partagé : préservé pendant toute la vie de la playlist
+    // (la pile manipule ce gain pour mettre en sourdine ; les
+    // changements de morceau ne le détruisent pas).
     const gain = ctx.createGain();
-    gain.gain.value = 0;
-    const now = ctx.currentTime;
-    gain.gain.linearRampToValueAtTime(1, now + DEFAULT_FADE);
+    gain.gain.value = tr.type === 'cut' ? 1 : 0;
     gain.connect(ctx.destination);
+    if (tr.type !== 'cut') {
+      gain.gain.setValueAtTime(0, startAt);
+      gain.gain.linearRampToValueAtTime(1, startAt + tr.durationSec);
+    }
 
     // Première source. Loop=false individuellement : c'est l'engine
     // qui ré-enchaîne sur le suivant à la fin (ou repart au début
@@ -355,11 +408,14 @@ class AudioEngine {
       playlist: {
         paths: [...node.bgPlaylistIds],
         currentIndex: startIndex,
-        trackStartedAtAudioTime: now - startOffset, // recule virtuellement le départ pour que ctx.currentTime - trackStarted = startOffset
+        // Recule virtuellement le départ pour que
+        // ctx.currentTime - trackStartedAtAudioTime = startOffset une
+        // fois la lecture lancée.
+        trackStartedAtAudioTime: startAt - startOffset,
       },
     };
     source.onended = () => this._onPlaylistTrackEnded(layerId);
-    source.start(now, startOffset);
+    source.start(startAt, startOffset);
     this.stack.push(layer);
   }
 
@@ -451,26 +507,48 @@ class AudioEngine {
       const offset = ctx.currentTime - layer.playlist.trackStartedAtAudioTime;
       this.playlistResume.set(layer.nodeId, {
         trackIndex: layer.playlist.currentIndex,
-        offsetInTrack: offset,
+        // Clamp à 0 : si le pop arrive avant que la lecture ait
+        // démarré (cas 'fade' où startAt > now), l'offset serait
+        // négatif. On reprend depuis le début dans ce cas.
+        offsetInTrack: Math.max(0, offset),
       });
     }
 
+    const tr = this.transitions;
     const now = ctx.currentTime;
+
+    // Sortie du layer pop : cut net ou fade-out vers 0.
     layer.gain.gain.cancelScheduledValues(now);
     layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
-    layer.gain.gain.linearRampToValueAtTime(0, now + DEFAULT_FADE * 0.6);
+    if (tr.type === 'cut') {
+      layer.gain.gain.setValueAtTime(0, now);
+    } else {
+      layer.gain.gain.linearRampToValueAtTime(0, now + tr.durationSec);
+    }
 
-    // Tear-down après le fondu.
-    setTimeout(() => this.tearDown(layer), DEFAULT_FADE * 600 + 50);
+    // Tear-down après le fondu (50 ms en cut, sinon durée + 50 ms).
+    const teardownDelay = tr.type === 'cut' ? 50 : tr.durationSec * 1000 + 50;
+    setTimeout(() => this.tearDown(layer), teardownDelay);
     this.stack.splice(idx, 1);
 
-    // Si on a retiré le sommet, le nouveau sommet se réveille.
-    if (wasTop) {
+    // Si on a retiré le sommet, ramener le sous-jacent (sauf si
+    // resumeUnderlying est désactivé — alors la couche du dessous
+    // reste muette, le pop se traduit par un silence net).
+    if (wasTop && tr.resumeUnderlying) {
       const newTop = this.stack[this.stack.length - 1];
       if (newTop) {
         newTop.gain.gain.cancelScheduledValues(now);
         newTop.gain.gain.setValueAtTime(newTop.gain.gain.value, now);
-        newTop.gain.gain.linearRampToValueAtTime(1, now + DEFAULT_FADE * 0.6);
+        if (tr.type === 'cut') {
+          newTop.gain.gain.setValueAtTime(1, now);
+        } else if (tr.type === 'fade') {
+          // Séquentiel : reste à 0 pendant le fade-out, fade-in après.
+          newTop.gain.gain.setValueAtTime(0, now + tr.durationSec);
+          newTop.gain.gain.linearRampToValueAtTime(1, now + 2 * tr.durationSec);
+        } else {
+          // Crossfade : simultané au fade-out du layer pop.
+          newTop.gain.gain.linearRampToValueAtTime(1, now + tr.durationSec);
+        }
       }
     }
   }

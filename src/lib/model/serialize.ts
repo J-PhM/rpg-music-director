@@ -16,6 +16,7 @@
 import {
   DEFAULT_APPEARANCE,
   DEFAULT_THEME,
+  DEFAULT_TRANSITIONS,
   SCENARIO_FILE_VERSION,
   type Scenario,
   type ScenarioFile,
@@ -37,6 +38,7 @@ export function toJson(scenario: Scenario): string {
     language: scenario.language,
     theme: scenario.theme,
     appearance: scenario.appearance,
+    transitions: scenario.transitions,
     nodes: scenario.nodes,
     connections: scenario.connections,
     viewByCartouche: scenario.viewByCartouche,
@@ -91,6 +93,7 @@ export function fromJson(jsonText: string): LoadResult {
     language: migratedRaw.language as Scenario['language'],
     theme: migratedRaw.theme as Scenario['theme'],
     appearance: migratedRaw.appearance as Scenario['appearance'],
+    transitions: migratedRaw.transitions as Scenario['transitions'],
     nodes: migratedRaw.nodes as Scenario['nodes'],
     connections: migratedRaw.connections as Scenario['connections'],
     viewByCartouche: migratedRaw.viewByCartouche as Scenario['viewByCartouche'],
@@ -120,6 +123,7 @@ function migrateFromProtoV9(raw: Record<string, unknown>): Record<string, unknow
     language: 'fr',
     theme: { ...DEFAULT_THEME },
     appearance: { ...DEFAULT_APPEARANCE },
+    transitions: { ...DEFAULT_TRANSITIONS },
     currentCartoucheId: raw.currentCartoucheId !== undefined ? raw.currentCartoucheId : null,
     viewByCartouche:
       raw.viewByCartouche && typeof raw.viewByCartouche === 'object'

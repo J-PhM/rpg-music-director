@@ -18,8 +18,11 @@
   import { i18n, t } from '$lib/i18n/i18n.svelte';
   import { store } from '$lib/store/scenarioStore.svelte';
   import { history } from '$lib/history/history.svelte';
-  import type { Language } from '$lib/model/types';
+  import type { Language, TransitionType } from '$lib/model/types';
   import { PRESET_IDS, presetHasBothModes, resolvePalette, type PresetId, type ThemeMode } from '$lib/themes/presets';
+
+  /** Ordre d'affichage des modes de transition (du plus courant au plus rare). */
+  const TRANSITION_TYPES: TransitionType[] = ['crossfade', 'fade', 'cut'];
 
   interface Props {
     open: boolean;
@@ -93,6 +96,32 @@
     history.snapshot('Variante de thème');
     store.setTheme(store.scenario.theme.preset, mode);
   }
+
+  // === Handlers section Transitions (jalon 16) ===
+  function handleTransitionTypeChange(type: TransitionType): void {
+    history.snapshot('Type de transition');
+    store.setTransitionType(type);
+  }
+
+  function handleDurationInput(e: Event): void {
+    // Coalescing : tous les ticks consécutifs du slider sont fondus
+    // en une seule entrée d'historique (pattern identique à l'opacité).
+    history.snapshot('Durée du fondu', 'transition-duration', 1500);
+    const v = Number((e.target as HTMLInputElement).value);
+    store.setTransitionDuration(v);
+  }
+
+  function handleResumeChange(e: Event): void {
+    history.snapshot('Reprise sous-jacente');
+    const checked = (e.target as HTMLInputElement).checked;
+    store.setResumeUnderlying(checked);
+  }
+
+  /** Affichage : "2" pour entier, "2.5" sinon. Évite "2.0 s" disgracieux. */
+  const durationDisplay = $derived.by((): string => {
+    const v = store.scenario.transitions.durationSec;
+    return Number.isInteger(v) ? v.toString() : v.toFixed(1);
+  });
 
   /** True si le preset courant supporte clair + sombre. */
   const bothModes = $derived(presetHasBothModes(store.scenario.theme.preset));
@@ -232,6 +261,60 @@
           <p class="hint dark-only-hint">{t('settings.theme.modeDarkOnly')}</p>
         {/if}
         <p class="hint">{t('settings.theme.hint')}</p>
+      </section>
+
+      <section class="section">
+        <h3 class="kicker section-title">{t('settings.section.transitions')}</h3>
+
+        <span class="label">{t('settings.transition.type.label')}</span>
+        <div class="transition-type-grid" role="radiogroup">
+          {#each TRANSITION_TYPES as ttype (ttype)}
+            {@const isActive = store.scenario.transitions.type === ttype}
+            <button
+              class="transition-type-card"
+              class:active={isActive}
+              type="button"
+              role="radio"
+              aria-checked={isActive}
+              onclick={() => handleTransitionTypeChange(ttype)}
+            >
+              <span class="transition-type-label">{t(`settings.transition.type.${ttype}` as const)}</span>
+              <span class="transition-type-tagline">{t(`settings.transition.type.${ttype}.tagline` as const)}</span>
+            </button>
+          {/each}
+        </div>
+
+        <label class="label" for="transition-duration">
+          {t('settings.transition.duration.label')}
+          <span class="duration-value">
+            {t('settings.transition.duration.value', { n: durationDisplay })}
+          </span>
+        </label>
+        <input
+          id="transition-duration"
+          class="duration-slider"
+          type="range"
+          min="0.5"
+          max="5"
+          step="0.1"
+          value={store.scenario.transitions.durationSec}
+          oninput={handleDurationInput}
+          disabled={store.scenario.transitions.type === 'cut'}
+        />
+        {#if store.scenario.transitions.type === 'cut'}
+          <p class="hint dark-only-hint">{t('settings.transition.duration.disabled')}</p>
+        {/if}
+
+        <label class="resume-toggle">
+          <input
+            type="checkbox"
+            checked={store.scenario.transitions.resumeUnderlying}
+            onchange={handleResumeChange}
+          />
+          <span>{t('settings.transition.resume.label')}</span>
+        </label>
+        <p class="hint">{t('settings.transition.resume.hint')}</p>
+        <p class="hint">{t('settings.transition.hint')}</p>
       </section>
 
       <section class="section">
@@ -431,6 +514,85 @@
   }
   .mode-buttons .btn {
     flex: 1;
+  }
+
+  /* Section Transitions (jalon 16) */
+  .transition-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .transition-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+    font-family: inherit;
+  }
+  .transition-type-card:hover {
+    border-color: var(--accent);
+    background: var(--paper-deep);
+  }
+  .transition-type-card.active {
+    border-color: var(--primary);
+    border-width: 2px;
+    padding: 9px 11px; /* compense le bord épaissi */
+  }
+  .transition-type-label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .transition-type-tagline {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    line-height: 1.5;
+  }
+
+  .duration-slider {
+    width: 100%;
+    accent-color: var(--primary);
+    margin: 6px 0 8px;
+  }
+  .duration-slider:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .duration-value {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    margin-left: 8px;
+  }
+
+  .resume-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 0 0;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--font-text);
+    font-size: 13px;
+    font-style: italic;
+    color: var(--ink);
+  }
+  .resume-toggle input[type='checkbox'] {
+    cursor: pointer;
+    accent-color: var(--primary);
+    margin: 0;
   }
 
   @keyframes backdrop-in {

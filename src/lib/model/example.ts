@@ -17,6 +17,11 @@ export const EXAMPLE_SCENARIO: Scenario = {
     backgroundImagePath: null, // = fossile par défaut
     backgroundOpacity: 12,
   },
+  transitions: {
+    type: 'crossfade',
+    durationSec: 2,
+    resumeUnderlying: true,
+  },
   currentCartoucheId: null,
   viewByCartouche: {
     root: { scale: 1, panX: 0, panY: 0 },
