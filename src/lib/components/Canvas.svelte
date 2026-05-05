@@ -340,6 +340,26 @@
     if (e.button !== 0) return;
     const pt = clientToWorld(e);
 
+    // === Mode Gomme : un clic = supprime (jalon 11) ===
+    if (store.eraserMode) {
+      const hit = findNodeAt(pt.x, pt.y);
+      if (hit) {
+        if (hit.type === 'cartouche') {
+          const childCount = store.scenario.nodes.filter((n) => n.parentId === hit.id).length;
+          if (childCount > 0) {
+            const ok = confirm(
+              t('confirm.eraseCartoucheWithChildren', { title: hit.title, n: childCount }),
+            );
+            if (!ok) return;
+          }
+        }
+        const n = store.deleteNode(hit.id);
+        onToast(n > 1 ? t('toast.nodesErased', { n }) : t('toast.nodeErased'));
+      }
+      // Pas de sélection / désélection en gomme : on reste prêt à effacer le suivant.
+      return;
+    }
+
     // === Mode Jeu : un clic = trigger via le moteur audio ===
     if (store.mode === 'play') {
       const hit = findNodeAt(pt.x, pt.y);
@@ -526,6 +546,14 @@
     }
   }
 
+  // Échap pour sortir du mode gomme (cf. cahier jalon 11).
+  function handleWindowEscape(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && store.eraserMode) {
+      store.exitEraser();
+      onToast(t('toast.eraserOff'));
+    }
+  }
+
   function maybeStartPan(e: PointerEvent): boolean {
     // Conditions : clic-milieu OU clic-gauche + Espace tenu.
     const wantPan = e.button === 1 || (e.button === 0 && spaceHeld);
@@ -586,6 +614,8 @@
   }
 
   function handleDropEvent(event: DropEvent): void {
+    // En mode Gomme, le drag-drop est désactivé (cf. cahier).
+    if (store.eraserMode) return;
     if (event.type === 'leave') {
       dropTargetId = null;
       return;
@@ -710,11 +740,18 @@
   });
 </script>
 
-<svelte:window onkeydown={handleWindowKeyDown} onkeyup={handleWindowKeyUp} />
+<svelte:window
+  onkeydown={(e) => {
+    handleWindowKeyDown(e);
+    handleWindowEscape(e);
+  }}
+  onkeyup={handleWindowKeyUp}
+/>
 
 <div
   class="canvas-area"
   class:play-mode={store.mode === 'play'}
+  class:eraser-mode={store.eraserMode}
   bind:this={canvasAreaEl}
   style:--bg-image={backgroundUrl ? `url("${backgroundUrl}")` : 'none'}
   style:--bg-opacity={store.scenario.appearance.backgroundOpacity / 100}
@@ -873,6 +910,11 @@
 
   <!-- Indicateur de zoom (jalon 6) en bas à gauche du canvas -->
   <div class="zoom-indicator">{Math.round(store.currentView.scale * 100)}&nbsp;%</div>
+
+  <!-- Bandeau de mode Gomme (jalon 11) -->
+  {#if store.eraserMode}
+    <div class="eraser-banner">{t('eraser.banner')}</div>
+  {/if}
 </div>
 
 <style>
@@ -1111,6 +1153,35 @@
   /* En mode Jeu, le curseur est plus naturel sur les nœuds (clic = trigger) */
   .canvas-area.play-mode .node {
     cursor: pointer;
+  }
+
+  /* === Mode Gomme (jalon 11) === */
+  .canvas-area.eraser-mode {
+    cursor: crosshair;
+  }
+  .canvas-area.eraser-mode svg {
+    cursor: crosshair;
+  }
+  .canvas-area.eraser-mode .node {
+    cursor: crosshair;
+  }
+  .eraser-banner {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--warm);
+    color: var(--paper);
+    padding: 6px 16px;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    pointer-events: none;
+    z-index: 60;
+    box-shadow: var(--shadow);
+    user-select: none;
   }
 
   /* ============================================================

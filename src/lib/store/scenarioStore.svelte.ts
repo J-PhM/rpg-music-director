@@ -47,6 +47,13 @@ class ScenarioStore {
   mode = $state<'edit' | 'play'>('edit');
 
   /**
+   * Mode gomme actif. État modal disponible UNIQUEMENT en mode 'edit'.
+   * Quand actif : curseur crosshair, le clic supprime au lieu de
+   * sélectionner. Désactivé automatiquement quand on bascule en 'play'.
+   */
+  eraserMode = $state<boolean>(false);
+
+  /**
    * Sérialisation à laquelle on compare pour décider si « modifié ».
    * Mise à jour à chaque sauvegarde / chargement / nouveau scénario.
    */
@@ -161,10 +168,31 @@ class ScenarioStore {
   // Actions — mode (préparation / jeu)
   // ============================================================
 
-  /** Bascule entre 'edit' et 'play'. Désélectionne pour propreté. */
+  /**
+   * Bascule entre 'edit' et 'play'. Désélectionne pour propreté.
+   * Désactive aussi la gomme : la gomme n'a pas de sens en mode Jeu.
+   */
   toggleMode(): void {
     this.mode = this.mode === 'edit' ? 'play' : 'edit';
     this.selectedId = null;
+    if (this.mode === 'play') {
+      this.eraserMode = false;
+    }
+  }
+
+  /**
+   * Bascule le mode gomme (uniquement disponible en mode 'edit').
+   * Désélectionne pour éviter la confusion avec l'inspecteur.
+   */
+  toggleEraser(): void {
+    if (this.mode !== 'edit') return;
+    this.eraserMode = !this.eraserMode;
+    this.selectedId = null;
+  }
+
+  /** Sortie explicite du mode gomme (par Échap, par exemple). */
+  exitEraser(): void {
+    this.eraserMode = false;
   }
 
   // ============================================================
@@ -494,6 +522,13 @@ class ScenarioStore {
 
     if (this.selectedId !== null && toDelete.has(this.selectedId)) {
       this.selectedId = null;
+    }
+
+    // Stoppe l'audio des nœuds supprimés (no-op s'ils n'étaient pas
+    // dans la pile). Couvre à la fois les couches normales et les
+    // fonds de cartouche.
+    for (const id of toDelete) {
+      engine.popLayerByNodeId(id);
     }
 
     return toDelete.size;

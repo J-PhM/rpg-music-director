@@ -209,6 +209,14 @@
       disabled={store.selectedId === null || store.mode === 'play'}
       title={store.mode === 'play' ? t('mode.tooltip.noEditInPlay') : ''}
     >{t('toolbar.delete')}</button>
+    <button
+      class="btn eraser-btn"
+      class:eraser-active={store.eraserMode}
+      type="button"
+      onclick={() => store.toggleEraser()}
+      disabled={store.mode === 'play'}
+      title={store.mode === 'play' ? t('toolbar.tooltip.eraserNotInPlay') : ''}
+    >{t('toolbar.eraser')}</button>
   </div>
 
   <div class="group right">
@@ -290,6 +298,19 @@
     color: var(--warm);
     padding-left: 8px;
     flex-shrink: 0;
+  }
+
+  /* Bouton Gomme actif : couleur terre cuite appuyée (cf. cahier) */
+  .eraser-btn.eraser-active {
+    background: var(--warm);
+    color: var(--paper);
+    border-color: var(--warm);
+  }
+  .eraser-btn.eraser-active:hover:not(:disabled) {
+    background: var(--warm);
+    color: var(--paper);
+    border-color: var(--warm);
+    opacity: 0.92;
   }
 
   /* Badge de mode (jalon 8) */

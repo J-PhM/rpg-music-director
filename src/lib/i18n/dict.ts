@@ -34,7 +34,19 @@ const fr = {
   'toolbar.settings': 'Paramètres',
   'toolbar.modePlay': '▶ Mode Jeu',
   'toolbar.modeEdit': 'Mode Préparation',
+  'toolbar.eraser': '🧽 Gomme',
   'toolbar.tooltip.tauriOnly': 'Disponible uniquement dans la fenêtre Tauri',
+  'toolbar.tooltip.eraserNotInPlay': 'La gomme n’est pas disponible en mode Jeu',
+
+  // === Mode gomme (jalon 11) ===
+  'eraser.banner': 'Mode Gomme — clic pour effacer · Échap pour sortir',
+  'toast.eraserOn': 'Mode Gomme activé',
+  'toast.eraserOff': 'Mode Gomme désactivé',
+  'toast.connectionErased': 'Connexion effacée',
+  'toast.nodeErased': 'Effacé',
+  'toast.nodesErased': '{n} éléments effacés',
+  'confirm.eraseCartoucheWithChildren':
+    'Effacer le cartouche « {title} » et ses {n} élément(s) ?',
 
   // === Badge de mode ===
   'mode.edit': 'Préparation',
